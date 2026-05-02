@@ -8,9 +8,10 @@ services:
     volumes:
       - ./data:/var/lib/headscale
       - ./config:/etc/headscale:ro
-    ports:
-      - "127.0.0.1:8080:8080"
-      - "127.0.0.1:9090:9090"
+    # Headscale listens on 8080 inside the container; the panel reaches it over
+    # the internal docker network so no host port mapping is needed by default.
+    # Add (e.g.) "- 127.0.0.1:8081:8080" here if you want host-side access for
+    # diagnostics, or expose 80/443 here if Headscale is doing its own TLS.
     command: serve
 
   panel:
@@ -32,4 +33,4 @@ services:
       # Docker socket so the panel can restart Headscale after a config or direct-DB write.
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "127.0.0.1:9000:9000"
+      - "8080:8080"

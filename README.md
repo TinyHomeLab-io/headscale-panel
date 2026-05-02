@@ -62,7 +62,9 @@ docker compose up -d
 
 This pulls `ghcr.io/tinyhomelab-io/headscale-panel:latest` for the panel service. The image is fully self-contained — no source bind-mount needed.
 
-The panel listens on `127.0.0.1:9000`. Open <http://localhost:9000>.
+The panel listens on port `8080`. Open <http://localhost:8080>.
+
+The example `compose.yaml` maps `8080:8080` (panel reachable on every host interface). To restrict it to loopback, change to `"127.0.0.1:8080:8080"`. To remap if 8080 is taken on the host, change to `"<your-port>:8080"` — the container always serves on internal port 8080. For internet exposure, front it with a TLS-terminating reverse proxy (login + TOTP otherwise go in cleartext).
 
 To pin a specific version, edit `compose.yaml` and replace `:latest` with a calendar tag (e.g. `:2026.05.02`).
 
@@ -134,7 +136,7 @@ That's why DNS / `server_url` / TLS env vars are deliberately *not* in `.env.exa
 
 ## First login & MFA
 
-1. Open <http://localhost:9000>.
+1. Open <http://localhost:8080>.
 2. Log in with the bootstrap user (`admin` / your `PANEL_BOOTSTRAP_PASSWORD`).
 3. The panel forces TOTP enrollment on first login: scan the QR code with an authenticator app (1Password, Authy, Aegis, etc.), enter the 6-digit code.
 4. Subsequent logins prompt for username + password, then the TOTP code.
@@ -261,7 +263,7 @@ The panel itself runs independently of Headscale; restarting Headscale doesn't r
 
 ## Public / TLS deployment
 
-The panel binds to `127.0.0.1:9000` — don't expose it to the internet directly. Front it with a TLS-terminating reverse proxy (Caddy, Traefik, nginx). Once the panel is served over HTTPS, set:
+The panel listens on port `8080` and the example compose binds it on all host interfaces — don't expose it to the internet directly. Front it with a TLS-terminating reverse proxy (Caddy, Traefik, nginx). Once the panel is served over HTTPS, set:
 
 ```
 PANEL_SECURE_COOKIES=true
