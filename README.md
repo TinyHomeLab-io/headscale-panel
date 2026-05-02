@@ -188,7 +188,7 @@ Create keys (user dropdown, expiration preset, reusable / ephemeral toggles), ex
 
 Firewall-style ACL editor.
 
-- **Rules** — table with #, Action (accept/drop pill), Source, Destination, Proto, Ports, ↑/↓/× actions. Drag the `⋮⋮` handle to reorder; ↑/↓ buttons work as a touch-friendly fallback. Add-rule form below the table; protocols that don't carry ports (ICMP, IGMP, GRE, ESP, AH) automatically hide the ports field.
+- **Rules** — table with #, Action (accept/drop pill), Source, Destination, Proto, Ports, and per-row ✎/↑/↓/× actions. ✎ opens a modal that edits the rule in place. Drag the `⋮⋮` handle to reorder; ↑/↓ buttons work as a touch-friendly fallback. Add-rule form below the table; protocols that don't carry ports (ICMP, IGMP, GRE, ESP, AH) automatically hide the ports field. Source / destination autocomplete includes Tailscale autogroups (`autogroup:self` for "each user → their own nodes", `autogroup:internet` for exit-node traffic).
 - **Tag owners** — declare tags before nodes can use them. Each row has chips per owner with × to remove, plus an inline "add owner" form. Owner inputs autocomplete from the current users + groups. Adding a tag from a node's detail page also auto-declares it here using that node's owner.
 
 Saves write back to the policy via Headscale's API. The policy lives in the DB (because `HEADSCALE_POLICY_MODE=database`), so no file edits.

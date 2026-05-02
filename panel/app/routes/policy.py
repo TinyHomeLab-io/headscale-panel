@@ -251,7 +251,11 @@ def _evaluate_policy(
 
 def _alias_options(doc: dict, users: list[dict]) -> list[dict]:
     """Build dropdown suggestions for source/destination aliases."""
-    opts: list[dict] = [{"value": "*", "label": "* (any)"}]
+    opts: list[dict] = [
+        {"value": "*", "label": "* (any)"},
+        {"value": "autogroup:self", "label": "autogroup:self (each user → own nodes)"},
+        {"value": "autogroup:internet", "label": "autogroup:internet (exit-node traffic)"},
+    ]
     for u in users:
         name = u.get("name", "")
         if name:
@@ -337,6 +341,37 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
 VALID_PROTOS = {"tcp", "udp", "icmp", "icmpv6", "sctp", "igmp", "gre", "esp", "ah"}
 
 
+def _build_rule(action: str, src: str, dst: str, proto: str, ports: str) -> dict | str:
+    """Build a rule dict from form inputs, or return an error string."""
+    src_list = _split_list(src)
+    dst_aliases = _split_list(dst)
+    port_spec = ports.strip() or "*"
+    proto = proto.strip().lower()
+    if not src_list or not dst_aliases:
+        return "Source and destination are required"
+
+    portless = {"icmp", "icmpv6", "igmp", "esp", "ah", "gre"}
+    if proto in portless:
+        port_spec = "*"
+
+    dst_list = []
+    for d in dst_aliases:
+        _existing_alias, existing_port = _split_dst(d)
+        if existing_port != "*" or d.endswith(":*"):
+            dst_list.append(d)
+        else:
+            dst_list.append(f"{d}:{port_spec}")
+
+    rule: dict = {
+        "action": action if action in ("accept", "drop") else "accept",
+        "src": src_list,
+        "dst": dst_list,
+    }
+    if proto and proto in VALID_PROTOS:
+        rule["proto"] = proto
+    return rule
+
+
 @router.post("/policy/rules/add")
 def add_rule(
     request: Request,
@@ -351,40 +386,16 @@ def add_rule(
     if not hs:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
 
-    src_list = _split_list(src)
-    dst_aliases = _split_list(dst)
-    port_spec = ports.strip() or "*"
-    proto = proto.strip().lower()
-    if not src_list or not dst_aliases:
+    rule = _build_rule(action, src, dst, proto, ports)
+    if isinstance(rule, str):
         return RedirectResponse(
-            f"/policy?save_error={quote_plus('Source and destination are required')}",
+            f"/policy?save_error={quote_plus(rule)}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
-
-    # Protocols that don't carry ports should always use ":*"
-    portless = {"icmp", "icmpv6", "igmp", "esp", "ah", "gre"}
-    if proto in portless:
-        port_spec = "*"
-
-    dst_list = []
-    for d in dst_aliases:
-        # Don't double-append a port if user already typed alias:port
-        _existing_alias, existing_port = _split_dst(d)
-        if existing_port != "*" or d.endswith(":*"):
-            dst_list.append(d)
-        else:
-            dst_list.append(f"{d}:{port_spec}")
 
     try:
         doc = load_policy(hs)
         rules = doc.get("acls") or []
-        rule = {
-            "action": action if action in ("accept", "drop") else "accept",
-            "src": src_list,
-            "dst": dst_list,
-        }
-        if proto and proto in VALID_PROTOS:
-            rule["proto"] = proto
         rules.append(rule)
         doc["acls"] = rules
         save_policy(hs, doc)
@@ -395,6 +406,51 @@ def add_rule(
         )
 
     return RedirectResponse("/policy?flash=Rule+added", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/policy/rules/update")
+def update_rule(
+    request: Request,
+    index: int = Form(...),
+    action: str = Form("accept"),
+    src: str = Form(...),
+    dst: str = Form(...),
+    proto: str = Form(""),
+    ports: str = Form("*"),
+    sess: dict = Depends(require_authenticated),
+):
+    hs = request.app.state.hs
+    if not hs:
+        return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
+
+    rule = _build_rule(action, src, dst, proto, ports)
+    if isinstance(rule, str):
+        return RedirectResponse(
+            f"/policy?save_error={quote_plus(rule)}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    try:
+        doc = load_policy(hs)
+        rules = doc.get("acls") or []
+        if not (0 <= index < len(rules)):
+            return RedirectResponse(
+                f"/policy?save_error={quote_plus(f'Rule {index + 1} does not exist')}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        rules[index] = rule
+        doc["acls"] = rules
+        save_policy(hs, doc)
+    except (httpx.HTTPError, json.JSONDecodeError) as e:
+        return RedirectResponse(
+            f"/policy?save_error={quote_plus(_format_save_error(e))}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    return RedirectResponse(
+        f"/policy?flash=Rule+{index + 1}+updated&highlight={index}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/policy/rules/reorder")

@@ -58,6 +58,14 @@
               <td class="mono" style="font-size:0.82rem;text-transform:uppercase">{{ r.proto if r.proto else 'any' }}</td>
               <td class="mono" style="font-size:0.82rem">{{ r.port_summary }}</td>
               <td class="actions">
+                <button type="button" class="btn btn-secondary btn-sm edit-rule-btn"
+                        title="Edit rule"
+                        data-index="{{ r.i }}"
+                        data-action="{{ r.action }}"
+                        data-src="{{ r.src | join(' ') }}"
+                        data-dst="{{ r.dsts | map(attribute='alias') | join(' ') }}"
+                        data-proto="{{ r.proto }}"
+                        data-ports="{{ r.dsts[0].port if r.dsts else '*' }}">✎</button>
                 <form method="post" action="/policy/rules/move" class="inline-form">
                   <input type="hidden" name="index" value="{{ r.i }}">
                   <input type="hidden" name="direction" value="up">
@@ -133,6 +141,92 @@
       </p>
     </form>
   </div>
+
+  <dialog id="edit-rule-dialog" style="border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elev);color:var(--text);padding:0;max-width:640px;width:92vw">
+    <form method="post" action="/policy/rules/update" id="edit-rule-form" style="padding:1.25rem">
+      <h2 style="margin:0 0 0.75rem;font-size:1rem">Edit rule <span id="edit-rule-num"></span></h2>
+      <input type="hidden" name="index" id="edit-index">
+      <div style="display:grid;grid-template-columns:110px 1fr;gap:0.6rem 0.9rem;align-items:flex-end">
+        <div class="field" style="margin:0">
+          <label for="edit-action">Action</label>
+          <select id="edit-action" name="action" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            <option value="accept">accept</option>
+            <option value="drop">drop</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label for="edit-src">Source</label>
+          <input id="edit-src" type="text" name="src" required list="alias_list" autocomplete="off">
+        </div>
+        <div class="field" style="margin:0;grid-column:1 / -1">
+          <label for="edit-dst">Destination</label>
+          <input id="edit-dst" type="text" name="dst" required list="alias_list" autocomplete="off">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="edit-proto">Protocol</label>
+          <select id="edit-proto" name="proto" onchange="onEditProtoChange()" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            <option value="">Any</option>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+            <option value="icmpv6">ICMPv6</option>
+            <option value="sctp">SCTP</option>
+            <option value="igmp">IGMP</option>
+            <option value="gre">GRE</option>
+            <option value="esp">ESP</option>
+            <option value="ah">AH</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0" id="edit-ports-field">
+          <label for="edit-ports">Ports</label>
+          <input id="edit-ports" type="text" name="ports" placeholder="* or 22 or 80,443" autocomplete="off">
+        </div>
+      </div>
+      <p class="muted" style="font-size:0.78rem;margin: 0.7rem 0 0">
+        Multiple values? Space- or comma-separate. The same port spec is applied to every destination.
+      </p>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('edit-rule-dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-sm">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // Open the edit modal pre-filled with the clicked row's data.
+    (function () {
+      var dialog = document.getElementById('edit-rule-dialog');
+      if (!dialog) return;
+      document.querySelectorAll('.edit-rule-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.getElementById('edit-index').value = btn.dataset.index;
+          document.getElementById('edit-rule-num').textContent = '#' + (parseInt(btn.dataset.index, 10) + 1);
+          document.getElementById('edit-action').value = btn.dataset.action || 'accept';
+          document.getElementById('edit-src').value = btn.dataset.src || '';
+          document.getElementById('edit-dst').value = btn.dataset.dst || '';
+          document.getElementById('edit-proto').value = btn.dataset.proto || '';
+          document.getElementById('edit-ports').value = btn.dataset.ports || '*';
+          onEditProtoChange();
+          dialog.showModal();
+        });
+      });
+    })();
+
+    function onEditProtoChange() {
+      var p = document.getElementById('edit-proto').value;
+      var portsField = document.getElementById('edit-ports-field');
+      var portsInput = document.getElementById('edit-ports');
+      var portless = ['icmp','icmpv6','igmp','gre','esp','ah'];
+      if (portless.indexOf(p) !== -1) {
+        portsField.style.opacity = '0.4';
+        portsInput.value = '*';
+        portsInput.disabled = true;
+      } else {
+        portsField.style.opacity = '1';
+        portsInput.disabled = false;
+      }
+    }
+  </script>
 
   <script>
     // Scroll a highlighted rule into view (when arriving via diagnostics link).

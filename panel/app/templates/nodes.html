@@ -121,7 +121,7 @@
         </div>
         <p class="muted" style="font-size:0.78rem;margin: 0.4rem 0 0">
           Run on the target device. With a preauth key it joins immediately (skip step 2).
-          Without one, the Tailscale logs print a registration URL — copy the 24-character ID after <code>/register/</code>.
+          Without one, the Tailscale logs print a registration URL — copy the ID after <code>/register/</code>.
         </p>
       </div>
     </div>
@@ -142,7 +142,7 @@
           </div>
           <div class="field" style="margin:0;flex:1;min-width:280px">
             <label for="reg_key">Registration ID <span class="muted" style="font-weight:400">(or full /register/… URL)</span></label>
-            <input id="reg_key" type="text" name="node_key" required minlength="24" maxlength="300" placeholder="zqGJu3lBoR3AOWYT6hEBDJhC" autocomplete="off" spellcheck="false"
+            <input id="reg_key" type="text" name="node_key" required minlength="6" maxlength="300" placeholder="paste registration ID (or full /register/… URL)" autocomplete="off" spellcheck="false"
                    style="font-family:var(--mono);font-size:0.95rem">
           </div>
           <button type="submit" class="btn" style="padding: 0.6rem 1.5rem">Register node →</button>
