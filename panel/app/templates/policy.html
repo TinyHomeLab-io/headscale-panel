@@ -19,6 +19,15 @@
       <span class="muted" style="font-size:0.8rem">Order matters — first match wins</span>
     </div>
 
+    <div style="margin: 0 1.25rem 0.75rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border))">
+      <p class="muted" style="font-size:0.82rem;margin:0;line-height:1.5">
+        <strong style="color:var(--text)">Tailscale ACL v2 has no explicit deny.</strong>
+        Rules can only have action <code>accept</code>. Anything not matched by an <code>accept</code> rule is denied by default — the implicit deny shows as a row at the bottom of the table once there's no catch-all allow.
+        <br>
+        <strong style="color:var(--text)">To start blocking traffic:</strong> add specific <code>accept</code> rules for what you want permitted, then <strong>delete the default <code>* → * any</code> rule</strong>. With the catch-all gone, anything not in your accept list is dropped automatically.
+      </p>
+    </div>
+
     <div class="table-wrap" style="border:none;border-radius:0">
       <table class="data" style="border:none">
         <thead>
