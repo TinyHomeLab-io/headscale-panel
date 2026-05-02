@@ -14,8 +14,11 @@ templates = Jinja2Templates(directory="app/templates")
 log = logging.getLogger("panel.dns")
 
 
-def _record_target_options(nodes: list[dict], base_domain: str, extra_records: list[dict]) -> dict:
-    a, aaaa, cname = [], [], []
+def _record_target_options(nodes: list[dict]) -> dict:
+    """Autocomplete options keyed by record type. Headscale only supports A/AAAA
+    in extra_records (CNAME and wildcards are silently dropped by Tailscale's
+    DNS map protocol)."""
+    a, aaaa = [], []
     for n in nodes or []:
         name = n.get("givenName") or n.get("name", "")
         for ip in n.get("ipAddresses") or []:
@@ -23,12 +26,7 @@ def _record_target_options(nodes: list[dict], base_domain: str, extra_records: l
                 a.append({"value": ip, "label": f"{name} ({ip})"})
             elif ":" in ip:
                 aaaa.append({"value": ip, "label": f"{name} ({ip})"})
-        if name and base_domain:
-            cname.append({"value": f"{name}.{base_domain}", "label": f"{name} (MagicDNS)"})
-    for r in extra_records or []:
-        if r.get("name"):
-            cname.append({"value": r["name"], "label": f"{r['name']} (existing record)"})
-    return {"A": a, "AAAA": aaaa, "CNAME": cname}
+    return {"A": a, "AAAA": aaaa}
 
 
 @router.get("/dns")
@@ -48,6 +46,12 @@ def view_dns(request: Request, sess: dict = Depends(require_authenticated)):
         except Exception:
             log.warning("could not load nodes for record autocomplete", exc_info=True)
 
+    inert_record_types = sorted({
+        (r.get("type") or "").upper()
+        for r in extra_records
+        if (r.get("type") or "").upper() not in {"A", "AAAA"}
+    } - {""})
+
     return templates.TemplateResponse(
         request,
         "dns.html",
@@ -60,7 +64,8 @@ def view_dns(request: Request, sess: dict = Depends(require_authenticated)):
             "search_domains": dns.get("search_domains") or [],
             "split_dns": list((nameservers.get("split") or {}).items()),
             "extra_records": extra_records,
-            "target_options": _record_target_options(nodes, base_domain, extra_records),
+            "target_options": _record_target_options(nodes),
+            "inert_record_types": inert_record_types,
             "flash": request.query_params.get("flash"),
             "error": request.query_params.get("error"),
         },
@@ -92,7 +97,9 @@ async def save_dns(request: Request, sess: dict = Depends(require_authenticated)
         form.getlist("er_name"), form.getlist("er_type"), form.getlist("er_value")
     ):
         n, t, v = (name or "").strip(), (type_ or "").strip().upper(), (value or "").strip()
-        if n and t and v:
+        # Headscale's DNS push only supports A/AAAA. Drop other types so they
+        # don't sit inertly in config.yaml and confuse anyone reading it.
+        if n and v and t in ("A", "AAAA"):
             extra_records.append({"name": n, "type": t, "value": v})
 
     doc = load_doc(cfg.headscale_config_path)

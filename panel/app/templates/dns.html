@@ -78,18 +78,20 @@
     <div class="card">
       <h2>Custom DNS records</h2>
       <p class="muted" style="font-size:0.85rem;margin-top:0">
-        Static DNS records pushed to all tailnet clients. The value field autocompletes:
-        <strong>A</strong> / <strong>AAAA</strong> suggest your node IPs, <strong>CNAME</strong> suggests other nodes' MagicDNS names and existing record names.
+        Static DNS records pushed to all tailnet clients. Only <strong>A</strong> and <strong>AAAA</strong> are supported — <a href="https://github.com/juanfont/headscale/issues/2508" target="_blank" rel="noopener">Headscale doesn't push CNAME or wildcard records</a>, so they're inert. The value field autocompletes node IPs.
       </p>
+
+      {% if inert_record_types %}
+        <div class="flash flash-error" style="margin: 0.5rem 0 1rem">
+          Existing records of type <code>{{ inert_record_types | join(', ') }}</code> are present in <code>config.yaml</code> but Headscale silently ignores them — they don't reach any client. Replace with <code>A</code> / <code>AAAA</code> records pointing at the target's tailnet IP, or remove them. Saving from this page will drop them.
+        </div>
+      {% endif %}
 
       <datalist id="er-list-A">
         {% for o in target_options.A %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
       </datalist>
       <datalist id="er-list-AAAA">
         {% for o in target_options.AAAA %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
-      </datalist>
-      <datalist id="er-list-CNAME">
-        {% for o in target_options.CNAME %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
       </datalist>
 
       <div id="er-rows">
@@ -99,9 +101,11 @@
             <select name="er_type" onchange="updateRecordList(this)" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);max-width:100px">
               <option value="A"     {% if r.type == 'A' %}selected{% endif %}>A</option>
               <option value="AAAA"  {% if r.type == 'AAAA' %}selected{% endif %}>AAAA</option>
-              <option value="CNAME" {% if r.type == 'CNAME' %}selected{% endif %}>CNAME</option>
+              {% if r.type and r.type|upper not in ('A','AAAA') %}
+                <option value="{{ r.type }}" selected disabled>{{ r.type }} (inert — will be removed on save)</option>
+              {% endif %}
             </select>
-            <input type="text" name="er_value" value="{{ r.value }}" list="er-list-{{ r.type or 'A' }}" placeholder="IP or hostname (start typing to pick a node)" autocomplete="off">
+            <input type="text" name="er_value" value="{{ r.value }}" list="er-list-{{ r.type if r.type|upper in ('A','AAAA') else 'A' }}" placeholder="IP (start typing to pick a node)" autocomplete="off">
             <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
           </div>
         {% endfor %}
@@ -137,9 +141,8 @@
         <select name="er_type" onchange="updateRecordList(this)" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);max-width:100px">
           <option value="A">A</option>
           <option value="AAAA">AAAA</option>
-          <option value="CNAME">CNAME</option>
         </select>
-        <input type="text" name="er_value" list="er-list-A" placeholder="IP or hostname (start typing to pick a node)" autocomplete="off">
+        <input type="text" name="er_value" list="er-list-A" placeholder="IP (start typing to pick a node)" autocomplete="off">
         <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
       `;
       c.appendChild(div);

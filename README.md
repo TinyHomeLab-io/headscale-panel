@@ -204,7 +204,7 @@ Manages the `dns:` block of `config.yaml`.
 - "Override local DNS" — when on, clients route *all* DNS queries through the global nameservers (otherwise they only consult those for matching domains)
 - Search domains
 - Split DNS — domain → list of nameservers (add/remove rows)
-- Custom records — A / AAAA / CNAME with type-aware autocomplete from your nodes' IPs and existing records
+- Custom records — A / AAAA only (Headscale's `extra_records` doesn't push CNAME or wildcard records to clients — see [headscale#2508](https://github.com/juanfont/headscale/issues/2508)). Value field autocompletes node IPs. Any pre-existing CNAME / wildcard rows in `config.yaml` are flagged as inert and stripped on save.
 
 Saving rewrites `config.yaml` and restarts Headscale.
 
