@@ -1,0 +1,151 @@
+{% extends "_layout.html" %}
+{% block title %}Dashboard — Headscale Panel{% endblock %}
+{% set active = "dashboard" %}
+
+{% macro stat_card(label, value, subtitle=None, color=None) %}
+  <div class="card" style="padding:1rem 1.1rem">
+    <div style="font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem">{{ label }}</div>
+    <div style="font-size:1.75rem;font-weight:600;line-height:1.1{% if color %};color:{{ color }}{% endif %}">{{ value }}</div>
+    {% if subtitle %}<div style="font-size:0.78rem;color:var(--text-dim);margin-top:0.2rem">{{ subtitle }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro donut(segments, total, center_top, center_bottom, size=160, stroke=18) %}
+  {% set radius = (size - stroke) / 2 - 2 %}
+  {% set cx = size / 2 %}
+  {% set cy = size / 2 %}
+  {% set C = 2 * 3.141592653589793 * radius %}
+  <div style="position:relative;width:{{ size }}px;height:{{ size }}px;margin:0 auto">
+    <svg viewBox="0 0 {{ size }} {{ size }}" width="{{ size }}" height="{{ size }}" style="display:block">
+      <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ radius }}" fill="none" stroke="var(--bg-hover)" stroke-width="{{ stroke }}"/>
+      {% set ns = namespace(offset=0) %}
+      {% if total > 0 %}
+        {% for seg in segments %}
+          {% if seg.value > 0 %}
+            {% set arc = (seg.value / total) * C %}
+            <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ radius }}" fill="none"
+                    stroke="{{ seg.color }}" stroke-width="{{ stroke }}"
+                    stroke-dasharray="{{ arc }} {{ C - arc }}"
+                    stroke-dashoffset="{{ -ns.offset }}"
+                    transform="rotate(-90 {{ cx }} {{ cy }})"
+                    stroke-linecap="butt"/>
+            {% set ns.offset = ns.offset + arc %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </svg>
+    <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center">
+      <div>
+        <div style="font-size:1.7rem;font-weight:600;line-height:1">{{ center_top }}</div>
+        {% if center_bottom %}<div style="font-size:0.75rem;color:var(--text-dim);margin-top:3px">{{ center_bottom }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro legend(items) %}
+  <div style="display:flex;justify-content:center;gap:1.25rem;margin-top:0.9rem;font-size:0.85rem;flex-wrap:wrap">
+    {% for it in items %}
+      <div><span style="display:inline-block;width:10px;height:10px;background:{{ it.color }};border-radius:2px;margin-right:5px;vertical-align:1px"></span>{{ it.label }}: <strong>{{ it.value }}</strong></div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p>Tailnet overview</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:0.75rem;margin-bottom:1.25rem">
+    {{ stat_card("Users",         stats.users) }}
+    {{ stat_card("Nodes",         stats.nodes_total, subtitle=(stats.nodes_online ~ " online")) }}
+    {{ stat_card("Exit nodes",    stats.exit_nodes) }}
+    {{ stat_card("Subnet routers",stats.subnet_routers) }}
+    {{ stat_card("Approved routes", stats.approved_routes_count) }}
+    {{ stat_card("Active keys",   stats.preauth_active, subtitle="preauth keys") }}
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:0.9rem;margin-bottom:1.25rem">
+    <div class="card" style="padding:1.25rem">
+      <h2>Nodes</h2>
+      {{ donut(
+          [
+            {"value": stats.nodes_online,  "color": "var(--success)"},
+            {"value": stats.nodes_offline, "color": "var(--text-faint)"},
+          ],
+          stats.nodes_total,
+          stats.nodes_online,
+          ("of " ~ stats.nodes_total ~ " online") if stats.nodes_total else "no nodes"
+      ) }}
+      {{ legend([
+          {"color": "var(--success)",     "label": "Online",  "value": stats.nodes_online},
+          {"color": "var(--text-faint)",  "label": "Offline", "value": stats.nodes_offline},
+      ]) }}
+    </div>
+
+    <div class="card" style="padding:1.25rem">
+      <h2>IPv4 allocation</h2>
+      <div style="margin-top:0.5rem">
+        <div style="font-size:1.7rem;font-weight:600;line-height:1.1">{{ stats.ipv4_used }} <span class="muted" style="font-size:0.95rem;font-weight:400">used</span></div>
+        <div class="muted" style="font-size:0.85rem;margin-top:0.3rem">in <code>{{ prefix_v4 }}</code></div>
+        <div class="muted" style="font-size:0.85rem;margin-top:0.6rem">{{ stats.ipv4_pool_display }} addresses available</div>
+      </div>
+      <div style="margin-top:1rem;height:6px;background:var(--bg-hover);border-radius:99px;overflow:hidden">
+        {% if stats.ipv4_pool > 0 and stats.ipv4_used > 0 %}
+          {% set pct = (stats.ipv4_used / stats.ipv4_pool) * 100 %}
+          <div style="height:100%;width:{{ [pct, 1]|max }}%;background:var(--accent);border-radius:99px"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card" style="padding:1.25rem">
+      <h2>IPv6 allocation</h2>
+      <div style="margin-top:0.5rem">
+        <div style="font-size:1.7rem;font-weight:600;line-height:1.1">{{ stats.ipv6_used }} <span class="muted" style="font-size:0.95rem;font-weight:400">used</span></div>
+        <div class="muted" style="font-size:0.85rem;margin-top:0.3rem">in <code>{{ prefix_v6 }}</code></div>
+        <div class="muted" style="font-size:0.85rem;margin-top:0.6rem">{{ stats.ipv6_pool_display }} addresses</div>
+      </div>
+    </div>
+  </div>
+
+  {% if recent_nodes %}
+    <div class="card" style="padding: 0">
+      <div style="padding: 1.25rem 1.25rem 0.75rem">
+        <h2 style="margin:0">Recent activity</h2>
+      </div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="data" style="border:none">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>User</th>
+              <th>Status</th>
+              <th>Last seen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for n in recent_nodes %}
+              <tr>
+                <td><a href="/nodes/{{ n.id }}" style="color:inherit"><strong>{{ n.givenName or n.name }}</strong></a></td>
+                <td>{{ (n.user or {}).get("name", "") }}</td>
+                <td>
+                  {% if n.online %}
+                    <span style="color:var(--success)">● online</span>
+                  {% else %}
+                    <span class="muted">● offline</span>
+                  {% endif %}
+                </td>
+                <td class="muted">{{ n.lastSeen[:19].replace("T", " ") if n.lastSeen else "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

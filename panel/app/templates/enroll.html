@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Set up 2FA — Headscale Panel{% endblock %}
+{% block body %}
+  <div class="auth">
+    <div class="auth-card">
+      <h1>Set up two-factor</h1>
+      <p>Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.</p>
+      <div class="qr-wrap">{{ qr_svg | safe }}</div>
+      <details>
+        <summary>Can't scan? Enter the secret manually</summary>
+        <div class="secret-box" style="margin-top:0.5rem">{{ secret }}</div>
+      </details>
+      <form method="post" action="/enroll" style="margin-top:1rem">
+        <div class="field">
+          <label for="code">6-digit code</label>
+          <input id="code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus autocomplete="one-time-code">
+        </div>
+        {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+        <button type="submit" class="btn btn-block">Confirm</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,185 @@
+{% extends "_layout.html" %}
+{% block title %}{{ node.givenName or node.name }} — Headscale Panel{% endblock %}
+{% set active = "nodes" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>{{ node.givenName or node.name }}</h1>
+      <p>
+        <a href="/nodes" class="muted">← All nodes</a>
+      </p>
+    </div>
+    <div>
+      <form method="post" action="/nodes/{{ node.id }}/expire" class="inline-form" style="margin-right:0.4rem"
+            onsubmit="return confirm('Expire this node? It will be kicked off the tailnet.')">
+        <button type="submit" class="btn btn-secondary btn-sm">Expire</button>
+      </form>
+      <form method="post" action="/nodes/{{ node.id }}/delete" class="inline-form"
+            onsubmit="return confirm('Delete this node? This cannot be undone.')">
+        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  {% if flash %}<div class="flash flash-success">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <h2>Overview</h2>
+    <table style="width:100%; font-size:0.9rem">
+      <tr><td class="muted" style="padding:0.3rem 0;width:140px">ID</td><td class="mono">{{ node.id }}</td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0">Hostname</td><td>{{ node.name }}</td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0">User</td><td>{{ node.user.name if node.user else "—" }}</td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0">IPs</td><td class="mono">
+        {% for ip in node.ipAddresses or [] %}
+          <span class="copyable" data-copy="{{ ip }}" title="Click to copy">{{ ip }}</span>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% if not node.ipAddresses %}—{% endif %}
+      </td></tr>
+      {% if magic_dns_name %}
+      <tr><td class="muted" style="padding:0.3rem 0">MagicDNS</td><td>
+        <span class="copyable mono" data-copy="{{ magic_dns_name }}" title="Click to copy">{{ magic_dns_name }}</span>
+      </td></tr>
+      {% endif %}
+      <tr><td class="muted" style="padding:0.3rem 0">Status</td><td>
+        {% if node._online %}
+          <span style="color:var(--success)">● online</span>
+        {% else %}
+          <span class="muted">● offline</span>
+        {% endif %}
+      </td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0">Last seen</td><td>{{ node.lastSeen[:19].replace("T"," ") if node.lastSeen else "—" }}</td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0;vertical-align:top">Machine key</td><td class="mono copyable" data-copy="{{ node.machineKey }}" style="font-size:0.75rem;word-break:break-all" title="Click to copy">{{ node.machineKey }}</td></tr>
+      <tr><td class="muted" style="padding:0.3rem 0;vertical-align:top">Node key</td><td class="mono copyable" data-copy="{{ node.nodeKey }}" style="font-size:0.75rem;word-break:break-all" title="Click to copy">{{ node.nodeKey }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Rename</h2>
+    <form method="post" action="/nodes/{{ node.id }}/rename">
+      <input type="hidden" name="return_to" value="detail">
+      <div class="form-row">
+        <div class="field">
+          <label for="rename_input">New name</label>
+          <input id="rename_input" type="text" name="new_name" value="{{ node.givenName or node.name }}" required pattern="[a-z0-9-]+" minlength="1">
+        </div>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Routes</h2>
+    {% if not subnet_routes and not advertises_exit and not exit_approved %}
+      <p class="muted" style="margin:0">This node hasn't advertised any routes. To advertise routes from a Tailscale client run <code>tailscale up --advertise-routes=10.0.0.0/24,…</code> or <code>--advertise-exit-node</code>.</p>
+    {% else %}
+      <form method="post" action="/nodes/{{ node.id }}/routes">
+        {% if advertises_exit or exit_approved %}
+          <label style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+            <input type="checkbox" name="exit_node" {% if exit_approved %}checked{% endif %} style="width:18px;height:18px">
+            <div>
+              <strong>Use as exit node</strong>
+              {% if exit_approved and not advertises_exit %}
+                <span style="color:var(--warning);font-size:0.8rem;margin-left:6px">approved but not advertised</span>
+              {% endif %}
+              <div class="muted" style="font-size:0.8rem">Approves <code>0.0.0.0/0</code> + <code>::/0</code> — all peers can route traffic through this node.</div>
+            </div>
+          </label>
+        {% endif %}
+        {% for cidr, approved in subnet_routes %}
+          <label style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+            <input type="checkbox" name="subnet" value="{{ cidr }}" {% if approved %}checked{% endif %} style="width:18px;height:18px">
+            <div>
+              <strong class="mono">{{ cidr }}</strong>
+              {% if approved and cidr not in (node.availableRoutes or []) %}
+                <span style="color:var(--warning);font-size:0.8rem;margin-left:6px">approved but no longer advertised</span>
+              {% endif %}
+            </div>
+          </label>
+        {% endfor %}
+        <div style="margin-top:1rem">
+          <button type="submit" class="btn">Save routes</button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card" style="border-color: color-mix(in srgb, var(--warning) 35%, var(--border))">
+    <h2 style="color: var(--warning)">⚠ IP addresses (advanced)</h2>
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Direct DB edit. Headscale doesn't expose this via API, so the panel writes to <code>nodes.ipv4 / nodes.ipv6</code>
+      and then <strong>restarts the Headscale container</strong> (~5–10s downtime for all peers) so the new IPs propagate.
+      Validates the new address is within the tailnet prefix and not in use.
+    </p>
+    <form method="post" action="/nodes/{{ node.id }}/ip"
+          onsubmit="return confirm('Update IPs and restart Headscale (~5s downtime for all clients)?')">
+      <div class="form-row">
+        <div class="field">
+          <label for="ipv4_input">IPv4 <span class="muted" style="font-weight:400">(in {{ prefix_v4 }})</span></label>
+          <input id="ipv4_input" type="text" name="ipv4" value="{{ current_ipv4 }}" placeholder="100.64.0.10" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="ipv6_input">IPv6 <span class="muted" style="font-weight:400">(in {{ prefix_v6 }})</span></label>
+          <input id="ipv6_input" type="text" name="ipv6" value="{{ current_ipv6 }}" placeholder="fd7a:115c:a1e0::a" autocomplete="off">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-danger">Save IPs &amp; restart Headscale</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Tags</h2>
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Operator-assigned tags. Type plain names — the <code>tag:</code> prefix is added automatically.
+      Tags must be declared in the ACL policy's <code>tagOwners</code> first.
+    </p>
+    {% if tags %}
+      <div class="chips">
+        {% for t in tags %}
+          {% set short = t[4:] if t.startswith('tag:') else t %}
+          <span class="chip">
+            {{ short }}
+            <form method="post" action="/nodes/{{ node.id }}/tags/remove" class="chip-form">
+              <input type="hidden" name="tag" value="{{ t }}">
+              <button type="submit" class="chip-x" title="Remove tag" aria-label="Remove {{ short }}">×</button>
+            </form>
+          </span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="font-size:0.85rem;margin: 0.5rem 0 1rem">No tags assigned yet.</p>
+    {% endif %}
+    <form method="post" action="/nodes/{{ node.id }}/tags/add">
+      <div class="form-row">
+        <div class="field">
+          <label for="add_tag_input">Add tag</label>
+          <input id="add_tag_input" type="text" name="tag" placeholder="e.g. personal" required autocomplete="off">
+        </div>
+        <button type="submit" class="btn">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="border-color: color-mix(in srgb, var(--warning) 35%, var(--border))">
+    <h2 style="color: var(--warning)">⚠ Change user (advanced)</h2>
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Reassign this node to a different user. Headscale doesn't expose this via API — the panel
+      writes <code>nodes.user_id</code> directly and restarts the Headscale container so peers
+      see the new ownership.
+    </p>
+    <form method="post" action="/nodes/{{ node.id }}/user"
+          onsubmit="return confirm('Change owner and restart Headscale?')">
+      <div class="form-row">
+        <div class="field">
+          <label for="user_select">Owner</label>
+          <select id="user_select" name="user_id" required style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            {% for u in users %}
+              <option value="{{ u.id }}" {% if node.user and u.id|string == node.user.id|string %}selected{% endif %}>{{ u.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-danger">Save &amp; restart Headscale</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

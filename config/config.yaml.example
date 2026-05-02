@@ -1,0 +1,37 @@
+# Headscale config managed by the panel — edit via /settings and /dns rather
+# than this file directly. The panel rewrites it and restarts Headscale on save.
+#
+# Copy to config.yaml on first deploy. Anything you set here gets picked up
+# alongside the env vars from .env. Headscale config reference:
+#   https://headscale.net/stable/ref/configuration/
+
+server_url: https://headscale.example.com
+
+dns:
+  magic_dns: true
+  base_domain: ts.example.com
+  override_local_dns: false
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 1.0.0.1
+    # Per-domain split DNS (optional). E.g.:
+    # split:
+    #   "internal.example.com": ["10.0.0.10"]
+    split: {}
+  # Domains clients append to bare hostnames during DNS lookup.
+  search_domains: []
+  # Static DNS records pushed to all tailnet clients. E.g.:
+  # extra_records:
+  #   - name: nas.example.com
+  #     type: A
+  #     value: 100.64.0.5
+  extra_records: []
+
+# TLS (off by default — manage via /settings):
+# tls_letsencrypt_hostname: ""
+# tls_letsencrypt_challenge_type: HTTP-01
+# tls_letsencrypt_listen: ":http"
+# tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+# tls_cert_path: ""
+# tls_key_path: ""

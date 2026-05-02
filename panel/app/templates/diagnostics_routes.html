@@ -1,0 +1,101 @@
+{% extends "_layout.html" %}
+{% block title %}Route lookup — Diagnostics{% endblock %}
+{% set active = "diagnostics-routes" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Route lookup</h1>
+      <p>Find which nodes route a destination on the tailnet</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Enter a CIDR (<code>192.168.10.0/24</code>), a single IP (<code>192.168.10.5</code> finds any covering route),
+      a tailnet IP (matches the node owning it), or <code>0.0.0.0/0</code> / <code>::/0</code> for exit nodes.
+    </p>
+    <form method="get" action="/diagnostics/routes" style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:1;margin:0;min-width:240px">
+        <label for="q">Query</label>
+        <input id="q" type="text" name="q" value="{{ q or '' }}" placeholder="e.g. 192.168.10.0/24, 10.0.0.5, 0.0.0.0/0, 100.64.0.1" autocomplete="off" spellcheck="false">
+      </div>
+      <button type="submit" class="btn">Look up</button>
+      {% if q %}<a href="/diagnostics/routes" class="btn btn-secondary">Clear</a>{% endif %}
+    </form>
+
+    {% if q %}
+      {% if lookup_invalid %}
+        <div class="flash flash-error" style="margin-top:1rem">Could not parse <code>{{ q }}</code> as an IP or CIDR.</div>
+      {% elif lookup_kind == "specific" %}
+        <div class="muted" style="font-size:0.8rem;margin-top:0.9rem">{{ route_matches|length }} node{{ '' if route_matches|length == 1 else 's' }} match</div>
+        <div style="margin-top:0.4rem">
+          {% for m in route_matches %}
+            <div style="padding:0.7rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap">
+              <div style="min-width:0">
+                <a href="/nodes/{{ m.node.id }}" style="color:inherit"><strong>{{ m.node.givenName or m.node.name }}</strong></a>
+                <span class="muted" style="font-size:0.8rem;margin-left:6px">{{ (m.node.user or {}).get("name", "") }}</span>
+                {% if m.node.online %}<span style="color:var(--success);font-size:0.78rem;margin-left:6px">● online</span>
+                {% else %}<span class="muted" style="font-size:0.78rem;margin-left:6px">● offline</span>{% endif %}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                {% for r in m.routes %}
+                  <span class="chip" style="font-size:0.78rem">
+                    {{ r.label }}
+                    {% if r.label == 'Exit node' %}<span class="muted" style="font-size:0.7rem;margin-left:4px">{{ r.cidr }}</span>{% endif %}
+                    {% if r.approved and r.advertised %}<span style="color:var(--success);font-size:0.7rem;margin-left:4px">approved</span>
+                    {% elif r.approved %}<span style="color:var(--warning);font-size:0.7rem;margin-left:4px">approved · not advertised</span>
+                    {% else %}<span style="color:var(--text-faint);font-size:0.7rem;margin-left:4px">advertised · not approved</span>{% endif %}
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif lookup_kind == "node_ip" %}
+        <div class="muted" style="font-size:0.85rem;margin-top:0.9rem">
+          <code>{{ q }}</code> is a tailnet IP of {{ route_matches|length }} node{{ '' if route_matches|length == 1 else 's' }}:
+        </div>
+        <div style="margin-top:0.4rem">
+          {% for m in route_matches %}
+            <div style="padding:0.7rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap">
+              <div style="min-width:0">
+                <a href="/nodes/{{ m.node.id }}" style="color:inherit"><strong>{{ m.node.givenName or m.node.name }}</strong></a>
+                <span class="muted" style="font-size:0.8rem;margin-left:6px">{{ (m.node.user or {}).get("name", "") }}</span>
+                {% if m.node.online %}<span style="color:var(--success);font-size:0.78rem;margin-left:6px">● online</span>
+                {% else %}<span class="muted" style="font-size:0.78rem;margin-left:6px">● offline</span>{% endif %}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                {% for ip in m.ips %}<span class="chip mono" style="font-size:0.78rem">{{ ip }}</span>{% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif lookup_kind == "exit_fallback" %}
+        <div class="flash flash-info" style="margin-top:1rem;font-size:0.85rem">
+          No tailnet route covers <code>{{ q }}</code>. A client would only reach it via the tailnet if it has been configured to use an exit node (<code>tailscale up --exit-node=…</code>). Available exit nodes:
+        </div>
+        <div>
+          {% for m in route_matches %}
+            <div style="padding:0.7rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap">
+              <div style="min-width:0">
+                <a href="/nodes/{{ m.node.id }}" style="color:inherit"><strong>{{ m.node.givenName or m.node.name }}</strong></a>
+                <span class="muted" style="font-size:0.8rem;margin-left:6px">{{ (m.node.user or {}).get("name", "") }}</span>
+                {% if m.node.online %}<span style="color:var(--success);font-size:0.78rem;margin-left:6px">● online</span>
+                {% else %}<span class="muted" style="font-size:0.78rem;margin-left:6px">● offline</span>{% endif %}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                {% for r in m.routes %}
+                  <span class="chip" style="font-size:0.78rem">Exit node <span class="muted" style="font-size:0.7rem;margin-left:4px">{{ r.cidr }}</span></span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty" style="margin-top:1rem">No tailnet route matches <code>{{ q }}</code> and no exit node is available.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endblock %}

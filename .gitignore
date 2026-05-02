@@ -1,0 +1,23 @@
+# Real config (contains secrets)
+.env
+config/config.yaml
+
+# Headscale runtime state
+data/
+panel-data/
+
+# Backups
+*.bak
+*.bak.*
+data.bak.*
+config.bak.*
+compose.yaml.bak.*
+
+# OS / editor noise
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.idea/
+.vscode/

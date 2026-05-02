@@ -1,0 +1,92 @@
+{% extends "_layout.html" %}
+{% block title %}Policy test — Diagnostics{% endblock %}
+{% set active = "diagnostics-policy" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Policy test</h1>
+      <p>Walk the ACL rules and find the first match for a (src → dst, proto/port) tuple</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <datalist id="alias_list">
+    {% for o in alias_options %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
+  </datalist>
+
+  <div class="card">
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Source / destination accept users (<code>user1@</code>), tags (<code>tag:server</code>), IPs, CIDRs, or <code>*</code>.
+      The evaluator expands these against current node state — tagged-node tags, user-owned IPs, group memberships, host aliases, and IP-in-CIDR.
+      {{ rules_count }} rule{{ '' if rules_count == 1 else 's' }} loaded from policy.
+    </p>
+    <form method="get" action="/diagnostics/policy" style="display:grid;grid-template-columns:1fr 1fr 110px 90px auto;gap:0.6rem;align-items:flex-end">
+      <div class="field" style="margin:0">
+        <label for="test_src">Source</label>
+        <input id="test_src" type="text" name="test_src" value="{{ test_src or '' }}" placeholder="e.g. user1@ or tag:client" list="alias_list" autocomplete="off">
+      </div>
+      <div class="field" style="margin:0">
+        <label for="test_dst">Destination</label>
+        <input id="test_dst" type="text" name="test_dst" value="{{ test_dst or '' }}" placeholder="e.g. tag:server or 100.64.0.5" list="alias_list" autocomplete="off">
+      </div>
+      <div class="field" style="margin:0">
+        <label for="test_proto">Protocol</label>
+        <select id="test_proto" name="test_proto" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+          {% for p in ['tcp','udp','icmp','icmpv6','sctp','igmp'] %}
+            <option value="{{ p }}" {% if test_proto == p %}selected{% endif %}>{{ p|upper }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="test_port">Port</label>
+        <input id="test_port" type="text" name="test_port" value="{{ test_port or '' }}" placeholder="22" inputmode="numeric" autocomplete="off">
+      </div>
+      <button type="submit" class="btn">Test</button>
+    </form>
+
+    {% if test_error %}
+      <div class="flash flash-error" style="margin-top:1rem">{{ test_error }}</div>
+    {% elif test_result %}
+      {% if test_result.action == 'accept' %}
+        <div style="margin-top:1rem;padding:0.9rem 1.1rem;border-radius:var(--radius-sm);background:color-mix(in srgb, var(--success) 12%, transparent);border:1px solid color-mix(in srgb, var(--success) 40%, transparent)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:600;color:var(--success);font-size:1rem">✓ ALLOW</div>
+              <div style="font-size:0.85rem;margin-top:0.4rem">
+                Matched <strong>rule #{{ test_result.rule_index + 1 }}</strong> ·
+                src <code>{{ test_result.matched_src }}</code> →
+                dst <code>{{ test_result.matched_dst }}</code>
+                {% if test_result.matched_port_spec %}<span class="muted">(ports {{ test_result.matched_port_spec }})</span>{% endif %}
+              </div>
+            </div>
+            <a href="/policy?highlight={{ test_result.rule_index }}#rule-{{ test_result.rule_index }}" class="btn btn-secondary btn-sm" style="white-space:nowrap">Show matching rule →</a>
+          </div>
+        </div>
+      {% elif test_result.action == 'drop' %}
+        <div style="margin-top:1rem;padding:0.9rem 1.1rem;border-radius:var(--radius-sm);background:color-mix(in srgb, var(--danger) 12%, transparent);border:1px solid color-mix(in srgb, var(--danger) 40%, transparent)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:600;color:var(--danger);font-size:1rem">✗ DROP</div>
+              <div style="font-size:0.85rem;margin-top:0.4rem">
+                Matched <strong>rule #{{ test_result.rule_index + 1 }}</strong> ·
+                src <code>{{ test_result.matched_src }}</code> →
+                dst <code>{{ test_result.matched_dst }}</code>
+              </div>
+            </div>
+            <a href="/policy?highlight={{ test_result.rule_index }}#rule-{{ test_result.rule_index }}" class="btn btn-secondary btn-sm" style="white-space:nowrap">Show matching rule →</a>
+          </div>
+        </div>
+      {% else %}
+        <div style="margin-top:1rem;padding:0.9rem 1.1rem;border-radius:var(--radius-sm);background:color-mix(in srgb, var(--text-faint) 18%, transparent);border:1px solid var(--border)">
+          <div style="font-weight:600;font-size:1rem">⊘ DENY <span class="muted" style="font-weight:400">(no rule matched — implicit deny)</span></div>
+          <div class="muted" style="font-size:0.85rem;margin-top:0.4rem">
+            None of the {{ rules_count }} rule{{ '' if rules_count == 1 else 's' }} matched
+            <code>{{ test_src }}</code> → <code>{{ test_dst }}</code>
+            via <code>{{ test_proto|upper }}{% if test_port %}/{{ test_port }}{% endif %}</code>.
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,405 @@
+{% extends "_layout.html" %}
+{% block title %}Nodes — Headscale Panel{% endblock %}
+{% set active = "nodes" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Nodes</h1>
+      <p>Machines registered on the tailnet</p>
+    </div>
+  </div>
+
+  {% if renamed %}<div class="flash flash-success">Renamed to <strong>{{ renamed }}</strong></div>{% endif %}
+  {% if expired %}<div class="flash flash-success">Expired <strong>{{ expired }}</strong> — node must re-authenticate</div>{% endif %}
+  {% if deleted %}<div class="flash flash-success">Deleted <strong>{{ deleted }}</strong></div>{% endif %}
+  {% if registered %}<div class="flash flash-success">Registered <strong>{{ registered }}</strong></div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  {% if users %}
+  <details class="card" style="padding: 1.25rem">
+    <summary style="font-size:0.85rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim);list-style:none;cursor:pointer">+ Register a node</summary>
+
+    <p class="muted" style="font-size:0.85rem;margin: 0.75rem 0">
+      <strong>Easier path:</strong> create a <a href="/preauthkeys">preauth key</a> and pass it with <code>--auth-key=…</code> below — the node will register itself with no second step.
+    </p>
+
+    <!-- Step 1: command builder -->
+    <div style="border-left: 3px solid var(--accent); padding: 0 0 0 1rem; margin: 1.5rem 0">
+      <h3 style="margin: 0 0 0.5rem; font-size: 0.95rem"><span style="display:inline-block;width:22px;height:22px;border-radius:999px;background:var(--accent);color:white;text-align:center;line-height:22px;font-size:0.75rem;margin-right:8px">1</span>Build the registration command</h3>
+      <p class="muted" style="font-size:0.82rem;margin: 0 0 1rem 30px">Pick options below — the output updates live. Copy and run on the device you want to register.</p>
+
+      <div style="margin-left: 30px">
+        <div class="field">
+          <label>Output format</label>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap">
+            <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+              <input type="radio" name="cb_format" value="native" checked onchange="rebuild()"> Native <code style="font-size:0.78rem">tailscale up</code>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+              <input type="radio" name="cb_format" value="docker_run" onchange="rebuild()"> Docker <code style="font-size:0.78rem">docker run</code>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+              <input type="radio" name="cb_format" value="docker_compose" onchange="rebuild()"> Docker compose
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="cb_login_server">Headscale URL</label>
+          <input id="cb_login_server" type="text" value="{{ server_url }}" oninput="rebuild()" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="cb_auth_key">Preauth key <span class="muted" style="font-weight:400">(optional — skips step 2)</span></label>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:stretch">
+            <input id="cb_auth_key" type="text" placeholder="hskey-auth-… or click + New key" oninput="rebuild()" autocomplete="off" style="flex:1;min-width:240px">
+            <select id="cb_quick_user" style="max-width:160px">
+              {% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="quickKey()" style="white-space:nowrap">+ New key</button>
+          </div>
+          <p class="muted" style="font-size:0.78rem;margin: 0.3rem 0 0">"+ New key" creates a single-use 24h preauth key for the selected user and fills the field.</p>
+        </div>
+
+        <div class="form-row">
+          <div class="field" style="flex:1">
+            <label for="cb_hostname">Hostname (override)</label>
+            <input id="cb_hostname" type="text" placeholder="leave blank for OS default" oninput="rebuild()" autocomplete="off">
+          </div>
+          <div class="field" style="flex:1" id="cb_operator_field">
+            <label for="cb_operator">Operator user (optional)</label>
+            <input id="cb_operator" type="text" placeholder="local OS user, e.g. user1" oninput="rebuild()" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="cb_routes">Advertise routes (subnet routing)</label>
+          <input id="cb_routes" type="text" placeholder="10.0.0.0/24, 192.168.1.0/24" oninput="rebuild()" autocomplete="off">
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:1.25rem;margin: 0.75rem 0 1rem">
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input id="cb_exit_node" type="checkbox" onchange="rebuild()"> Advertise as exit node
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input id="cb_accept_routes" type="checkbox" onchange="rebuild()"> Accept tailnet routes
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input id="cb_accept_dns" type="checkbox" checked onchange="rebuild()"> Accept tailnet DNS
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input id="cb_ssh" type="checkbox" onchange="rebuild()"> Enable Tailscale SSH
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input id="cb_shields" type="checkbox" onchange="rebuild()"> Shields up (block incoming)
+          </label>
+        </div>
+
+        <!-- Docker-only options -->
+        <div id="cb_docker_opts" style="display:none;border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem">
+          <div class="form-row">
+            <div class="field" style="flex:1">
+              <label for="cb_container_name">Container name</label>
+              <input id="cb_container_name" type="text" value="tailscale" oninput="rebuild()" autocomplete="off">
+            </div>
+            <div class="field" style="flex:1">
+              <label for="cb_state_volume">State volume name</label>
+              <input id="cb_state_volume" type="text" value="tailscale-state" oninput="rebuild()" autocomplete="off">
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:1.25rem">
+            <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+              <input id="cb_kernel" type="checkbox" onchange="rebuild()"> Kernel networking <span class="muted" style="font-size:0.78rem">(faster, requires <code>NET_ADMIN</code>)</span>
+            </label>
+          </div>
+        </div>
+
+        <label class="muted" style="font-size:0.8rem;display:block;margin: 1rem 0 0.3rem">Generated command</label>
+        <div style="display:flex;gap:0.5rem;align-items:flex-start">
+          <textarea id="cb_command" readonly rows="6" style="flex:1;font-family:var(--mono);font-size:0.85rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:0.6rem;resize:vertical"></textarea>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyCommand()" style="white-space:nowrap">Copy</button>
+        </div>
+        <p class="muted" style="font-size:0.78rem;margin: 0.4rem 0 0">
+          Run on the target device. With a preauth key it joins immediately (skip step 2).
+          Without one, the Tailscale logs print a registration URL — copy the 24-character ID after <code>/register/</code>.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 2: register the node -->
+    <div style="border-left: 3px solid var(--accent); padding: 0 0 0 1rem">
+      <h3 style="margin: 0 0 0.4rem; font-size: 0.95rem"><span style="display:inline-block;width:22px;height:22px;border-radius:999px;background:var(--accent);color:white;text-align:center;line-height:22px;font-size:0.75rem;margin-right:8px">2</span>Complete registration</h3>
+      <p class="muted" style="font-size:0.82rem;margin: 0 0 1.25rem 30px">
+        Skip if you used a preauth key. Otherwise paste the registration ID from the command's output. <em>IDs expire after a few minutes — re-run the command if you hit "not found in cache".</em>
+      </p>
+      <form method="post" action="/nodes/register" style="margin-left: 30px">
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="margin:0;min-width:140px">
+            <label for="reg_user">As user</label>
+            <select id="reg_user" name="user_id" required>
+              {% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field" style="margin:0;flex:1;min-width:280px">
+            <label for="reg_key">Registration ID <span class="muted" style="font-weight:400">(or full /register/… URL)</span></label>
+            <input id="reg_key" type="text" name="node_key" required minlength="24" maxlength="300" placeholder="zqGJu3lBoR3AOWYT6hEBDJhC" autocomplete="off" spellcheck="false"
+                   style="font-family:var(--mono);font-size:0.95rem">
+          </div>
+          <button type="submit" class="btn" style="padding: 0.6rem 1.5rem">Register node →</button>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      function val(id) { return document.getElementById(id).value.trim(); }
+      function chk(id) { return document.getElementById(id).checked; }
+
+      // Build the list of `tailscale up` flags that aren't first-class env vars in
+      // the docker image (so they go into TS_EXTRA_ARGS for docker, or as flags for native).
+      function buildExtraArgs(includeLoginServer) {
+        const parts = [];
+        if (includeLoginServer && val('cb_login_server')) parts.push(`--login-server=${val('cb_login_server')}`);
+        if (val('cb_operator')) parts.push(`--operator=${val('cb_operator')}`);
+        if (chk('cb_exit_node')) parts.push('--advertise-exit-node');
+        if (chk('cb_accept_routes')) parts.push('--accept-routes');
+        if (chk('cb_ssh')) parts.push('--ssh');
+        if (chk('cb_shields')) parts.push('--shields-up');
+        return parts;
+      }
+
+      function buildNative() {
+        const parts = ['sudo tailscale up'];
+        if (val('cb_login_server')) parts.push(`--login-server=${val('cb_login_server')}`);
+        if (val('cb_auth_key'))     parts.push(`--auth-key=${val('cb_auth_key')}`);
+        if (val('cb_hostname'))     parts.push(`--hostname=${val('cb_hostname')}`);
+        if (val('cb_operator'))     parts.push(`--operator=${val('cb_operator')}`);
+        const routes = val('cb_routes').replace(/\s+/g, '');
+        if (routes) parts.push(`--advertise-routes=${routes}`);
+        if (chk('cb_exit_node'))     parts.push('--advertise-exit-node');
+        if (chk('cb_accept_routes')) parts.push('--accept-routes');
+        if (!chk('cb_accept_dns'))   parts.push('--accept-dns=false');
+        if (chk('cb_ssh'))           parts.push('--ssh');
+        if (chk('cb_shields'))       parts.push('--shields-up');
+        return parts.join(' \\\n  ');
+      }
+
+      function buildDockerRun() {
+        const name = val('cb_container_name') || 'tailscale';
+        const vol  = val('cb_state_volume') || 'tailscale-state';
+        const kernel = chk('cb_kernel');
+        const lines = [
+          'docker run -d \\',
+          `  --name ${name} \\`,
+          '  --restart unless-stopped \\',
+          `  -v ${vol}:/var/lib/tailscale \\`,
+        ];
+        if (kernel) {
+          lines.push('  --cap-add NET_ADMIN --cap-add NET_RAW \\');
+          lines.push('  --device /dev/net/tun:/dev/net/tun \\');
+        }
+        // Env vars: structured first, then TS_EXTRA_ARGS for the rest.
+        if (val('cb_hostname')) lines.push(`  -e TS_HOSTNAME=${val('cb_hostname')} \\`);
+        const routes = val('cb_routes').replace(/\s+/g, '');
+        if (routes) lines.push(`  -e TS_ROUTES=${routes} \\`);
+        if (val('cb_auth_key')) lines.push(`  -e TS_AUTHKEY=${val('cb_auth_key')} \\`);
+        if (!chk('cb_accept_dns')) lines.push('  -e TS_ACCEPT_DNS=false \\');
+        if (kernel) lines.push('  -e TS_USERSPACE=false \\');
+        const extra = buildExtraArgs(true);
+        if (extra.length) lines.push(`  -e TS_EXTRA_ARGS="${extra.join(' ')}" \\`);
+        lines.push('  tailscale/tailscale');
+        return lines.join('\n');
+      }
+
+      function buildDockerCompose() {
+        const name = val('cb_container_name') || 'tailscale';
+        const vol  = val('cb_state_volume') || 'tailscale-state';
+        const kernel = chk('cb_kernel');
+        const env = {};
+        if (val('cb_hostname')) env.TS_HOSTNAME = val('cb_hostname');
+        const routes = val('cb_routes').replace(/\s+/g, '');
+        if (routes) env.TS_ROUTES = routes;
+        if (val('cb_auth_key')) env.TS_AUTHKEY = val('cb_auth_key');
+        if (!chk('cb_accept_dns')) env.TS_ACCEPT_DNS = 'false';
+        if (kernel) env.TS_USERSPACE = 'false';
+        const extra = buildExtraArgs(true);
+        if (extra.length) env.TS_EXTRA_ARGS = extra.join(' ');
+
+        let out = 'services:\n';
+        out += `  ${name}:\n`;
+        out += '    image: tailscale/tailscale\n';
+        out += `    container_name: ${name}\n`;
+        out += '    restart: unless-stopped\n';
+        if (kernel) {
+          out += '    cap_add:\n      - NET_ADMIN\n      - NET_RAW\n';
+          out += '    devices:\n      - /dev/net/tun:/dev/net/tun\n';
+        }
+        out += '    volumes:\n';
+        out += `      - ${vol}:/var/lib/tailscale\n`;
+        if (Object.keys(env).length) {
+          out += '    environment:\n';
+          for (const [k, v] of Object.entries(env)) {
+            const needsQuotes = /[\s"#]/.test(v);
+            out += `      ${k}: ${needsQuotes ? '"' + v.replace(/"/g, '\\"') + '"' : v}\n`;
+          }
+        }
+        out += `volumes:\n  ${vol}:\n`;
+        return out;
+      }
+
+      function rebuild() {
+        const fmt = (document.querySelector('input[name=cb_format]:checked') || {}).value || 'native';
+        document.getElementById('cb_docker_opts').style.display = (fmt === 'native') ? 'none' : 'block';
+        // Operator only makes sense for native (it sets a local OS user binding).
+        document.getElementById('cb_operator_field').style.display = (fmt === 'native') ? 'block' : 'none';
+        let out;
+        if (fmt === 'docker_run')           out = buildDockerRun();
+        else if (fmt === 'docker_compose')  out = buildDockerCompose();
+        else                                out = buildNative();
+        document.getElementById('cb_command').value = out;
+      }
+
+      async function copyCommand() {
+        const ta = document.getElementById('cb_command');
+        try {
+          await navigator.clipboard.writeText(ta.value);
+          ta.style.borderColor = 'var(--success)';
+          setTimeout(() => { ta.style.borderColor = ''; }, 800);
+        } catch (e) {
+          ta.select();
+          document.execCommand('copy');
+        }
+      }
+
+      async function quickKey() {
+        const userId = document.getElementById('cb_quick_user').value;
+        const fd = new FormData();
+        fd.append('user_id', userId);
+        const r = await fetch('/api/quick-preauth-key', {method: 'POST', body: fd});
+        if (!r.ok) {
+          let msg;
+          try { msg = (await r.json()).error; } catch { msg = await r.text(); }
+          alert('Could not create key: ' + (msg || r.status));
+          return;
+        }
+        const data = await r.json();
+        const input = document.getElementById('cb_auth_key');
+        input.value = data.key;
+        input.style.borderColor = 'var(--success)';
+        setTimeout(() => { input.style.borderColor = ''; }, 1200);
+        rebuild();
+      }
+      rebuild();
+    </script>
+  </details>
+  {% endif %}
+
+  <div class="card" style="padding: 0">
+    <div style="padding: 1.25rem 1.25rem 0.75rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap">
+      <h2 style="margin:0">{{ nodes|length }} node{{ '' if nodes|length == 1 else 's' }}</h2>
+      <input type="search" placeholder="Filter…" style="max-width:240px" oninput="filterNodes(this.value)">
+    </div>
+    {% if nodes %}
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="data" style="border:none" id="nodes-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>User</th>
+              <th>IPs</th>
+              <th>Status</th>
+              <th>Last seen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for n in nodes %}
+              <tr>
+                <td class="mono">{{ n.id }}</td>
+                <td>
+                  <a href="/nodes/{{ n.id }}" style="color:inherit;text-decoration:none"><strong>{{ n.givenName or n.name }}</strong></a>
+                  <span class="copyable muted" data-copy="{{ n.givenName or n.name }}" title="Copy hostname" style="margin-left:6px;font-size:0.7rem">⎘</span>
+                  {% if n.hostname and n.hostname != (n.givenName or n.name) %}
+                    <div class="muted" style="font-size:0.8rem">{{ n.hostname }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ n._user_name }}</td>
+                <td class="mono" style="font-size:0.8rem">
+                  {% for ip in n.ipAddresses or [] %}
+                    <span class="copyable" data-copy="{{ ip }}" title="Click to copy">{{ ip }}</span>{% if not loop.last %}, {% endif %}
+                  {% endfor %}
+                </td>
+                <td>
+                  {% if n._online %}
+                    <span style="display:inline-flex;align-items:center;gap:0.4rem;color:var(--success)">
+                      <span style="width:8px;height:8px;background:var(--success);border-radius:999px"></span> online
+                    </span>
+                  {% else %}
+                    <span class="muted" style="display:inline-flex;align-items:center;gap:0.4rem">
+                      <span style="width:8px;height:8px;background:var(--text-faint);border-radius:999px"></span> offline
+                    </span>
+                  {% endif %}
+                </td>
+                <td class="muted">{{ n._last_seen }}</td>
+                <td class="actions">
+                  <a href="/nodes/{{ n.id }}" class="btn btn-secondary btn-sm">Manage</a>
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          onclick="openRename('{{ n.id }}', '{{ (n.givenName or n.name)|e }}')">Rename</button>
+                  <form method="post" action="/nodes/{{ n.id }}/expire" class="inline-form"
+                        onsubmit="return confirm('Expire {{ (n.givenName or n.name)|e }}? It will be kicked off the tailnet and must re-authenticate.')">
+                    <button type="submit" class="btn btn-secondary btn-sm">Expire</button>
+                  </form>
+                  <form method="post" action="/nodes/{{ n.id }}/delete" class="inline-form"
+                        onsubmit="return confirm('Delete {{ (n.givenName or n.name)|e }}? This cannot be undone.')">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty" style="margin: 1.25rem">No nodes registered yet.</div>
+    {% endif %}
+  </div>
+
+  <dialog id="rename-dialog" style="border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elev);color:var(--text);padding:0;max-width:380px;width:90vw">
+    <form method="post" id="rename-form" style="padding: 1.25rem">
+      <h2 style="margin:0 0 0.5rem;font-size:1rem">Rename node</h2>
+      <p class="muted" style="margin:0 0 1rem;font-size:0.85rem">Currently: <strong class="cur"></strong></p>
+      <div class="field">
+        <label for="rename-input">New name</label>
+        <input id="rename-input" type="text" name="new_name" required pattern="[a-z0-9-]+" minlength="1" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('rename-dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-sm">Rename</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    function filterNodes(q) {
+      q = q.toLowerCase();
+      document.querySelectorAll('#nodes-table tbody tr').forEach(function (row) {
+        row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+      });
+    }
+
+    function openRename(id, name) {
+      var d = document.getElementById('rename-dialog');
+      var f = document.getElementById('rename-form');
+      f.action = '/nodes/' + id + '/rename';
+      f.querySelector('input[name=new_name]').value = name;
+      f.querySelector('.cur').textContent = name;
+      d.showModal();
+      f.querySelector('input[name=new_name]').select();
+    }
+
+    // Close dialog when clicking the backdrop
+    document.getElementById('rename-dialog').addEventListener('click', function (e) {
+      if (e.target === this) this.close();
+    });
+  </script>
+{% endblock %}

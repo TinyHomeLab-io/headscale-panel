@@ -1,0 +1,119 @@
+{% extends "_layout.html" %}
+{% block title %}Preauth keys — Headscale Panel{% endblock %}
+{% set active = "preauthkeys" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Preauth keys</h1>
+      <p>Used by Tailscale clients to register themselves to a user</p>
+    </div>
+  </div>
+
+  {% if created_key %}
+    <div class="flash flash-success">
+      <strong>Key created — copy it now, it won't be shown again:</strong>
+      <div class="secret-box copyable" data-copy="{{ created_key }}" style="margin-top:0.5rem" title="Click to copy">{{ created_key }}</div>
+    </div>
+  {% endif %}
+  {% if expired %}<div class="flash flash-success">Expired key starting <code>{{ expired }}</code></div>{% endif %}
+  {% if request.query_params.get('deleted') %}<div class="flash flash-success">Deleted key starting <code>{{ request.query_params.get('deleted') }}</code></div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  {% if users %}
+    <div class="card">
+      <h2>Create key</h2>
+      <form method="post" action="/preauthkeys">
+        <div class="form-row">
+          <div class="field">
+            <label for="user_id">User</label>
+            <select id="user_id" name="user_id" required style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+              {% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="expiration">Expires in</label>
+            <select id="expiration" name="expiration" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+              {% for p in presets %}<option {% if p == default_preset %}selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:1.25rem;flex-wrap:wrap;margin: 0.25rem 0 1rem">
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input type="checkbox" name="reusable" value="true"> Reusable
+            <span class="muted" style="font-size:0.8rem">(can register multiple nodes)</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer">
+            <input type="checkbox" name="ephemeral" value="true"> Ephemeral
+            <span class="muted" style="font-size:0.8rem">(node auto-deletes when offline)</span>
+          </label>
+        </div>
+        <button type="submit" class="btn">Create key</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="card"><div class="empty">Create a user first.</div></div>
+  {% endif %}
+
+  <div class="card" style="padding: 0">
+    <div style="padding: 1.25rem 1.25rem 0.75rem">
+      <h2 style="margin:0">{{ keys|length }} key{{ '' if keys|length == 1 else 's' }}</h2>
+    </div>
+    {% if keys %}
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="data" style="border:none">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Key</th>
+              <th>Flags</th>
+              <th>Used</th>
+              <th>Expires</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for k in keys %}
+              <tr style="{% if k._expired or k._used %}opacity:0.55{% endif %}">
+                <td>{{ k._user }}</td>
+                <td class="mono copyable" data-copy="{{ k.key }}" style="font-size:0.78rem" title="Click to copy full key">{{ k.key[:24] }}…</td>
+                <td>
+                  {% if k._reusable %}<span style="font-size:0.75rem;background:var(--bg-hover);padding:2px 6px;border-radius:3px;margin-right:3px">reusable</span>{% endif %}
+                  {% if k._ephemeral %}<span style="font-size:0.75rem;background:var(--bg-hover);padding:2px 6px;border-radius:3px">ephemeral</span>{% endif %}
+                  {% if not k._reusable and not k._ephemeral %}<span class="muted" style="font-size:0.8rem">single-use</span>{% endif %}
+                </td>
+                <td>
+                  {% if k._used %}<span style="color:var(--text-dim)">yes</span>
+                  {% else %}<span style="color:var(--success)">no</span>{% endif %}
+                </td>
+                <td class="muted">
+                  {% if k._never_expires %}
+                    <span class="muted">Never</span>
+                  {% else %}
+                    {{ k._expiration }}
+                    {% if k._expired %}<span style="color:var(--danger);font-size:0.75rem;margin-left:6px">expired</span>{% endif %}
+                  {% endif %}
+                </td>
+                <td class="actions">
+                  {% if not k._expired and not k._used %}
+                    <form method="post" action="/preauthkeys/expire" class="inline-form"
+                          onsubmit="return confirm('Expire this key? It cannot be used after this.')">
+                      <input type="hidden" name="key_id" value="{{ k.id }}">
+                      <button type="submit" class="btn btn-secondary btn-sm">Expire</button>
+                    </form>
+                  {% endif %}
+                  <form method="post" action="/preauthkeys/delete" class="inline-form"
+                        onsubmit="return confirm('Permanently delete this key? This removes it from the audit trail.')">
+                    <input type="hidden" name="key_id" value="{{ k.id }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty" style="margin: 1.25rem">No preauth keys yet.</div>
+    {% endif %}
+  </div>
+{% endblock %}

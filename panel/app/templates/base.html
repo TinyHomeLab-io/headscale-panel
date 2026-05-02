@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1020">
+  <title>{% block title %}Headscale Panel{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}{% endblock %}
+  <script>
+    // Global click-to-copy. Any element with class "copyable" copies its
+    // data-copy attribute (or textContent) to the clipboard on click.
+    document.addEventListener('click', async function (e) {
+      var el = e.target.closest('.copyable');
+      if (!el) return;
+      var text = el.dataset.copy || el.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+        el.classList.add('copied');
+        setTimeout(function () { el.classList.remove('copied'); }, 900);
+      } catch (err) {
+        console.error('Copy failed:', err);
+      }
+    });
+  </script>
+</body>
+</html>

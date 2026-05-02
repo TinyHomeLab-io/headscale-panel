@@ -1,0 +1,153 @@
+{% extends "_layout.html" %}
+{% block title %}DNS — Headscale Panel{% endblock %}
+{% set active = "dns" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>DNS</h1>
+      <p>MagicDNS, nameservers, split DNS, and custom records · saving restarts Headscale</p>
+    </div>
+  </div>
+
+  {% if flash %}<div class="flash flash-success">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/dns"
+        onsubmit="return confirm('Save DNS settings and restart Headscale (~5s downtime)?')">
+
+    <div class="card">
+      <h2>MagicDNS</h2>
+
+      <label style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;cursor:pointer">
+        <input type="checkbox" name="magic_dns" {% if magic_dns %}checked{% endif %}>
+        <strong>Enable MagicDNS</strong>
+        <span class="muted" style="font-size:0.85rem">tailnet hostname resolution</span>
+      </label>
+
+      <div class="field">
+        <label for="base_domain">Base domain</label>
+        <input id="base_domain" type="text" name="base_domain" value="{{ base_domain }}" placeholder="ts.example.com">
+        <p class="muted" style="font-size:0.8rem;margin: 0.3rem 0 0">MagicDNS suffix (a node named <code>laptop</code> becomes <code>laptop.{{ base_domain or 'ts.example.com' }}</code>).</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Nameservers</h2>
+
+      <div class="field">
+        <label for="global_nameservers">Global nameservers</label>
+        <textarea id="global_nameservers" name="global_nameservers" rows="3" placeholder="One per line:&#10;1.1.1.1&#10;1.0.0.1" style="font-family:var(--mono);font-size:0.9rem">{{ global_nameservers|join('\n') }}</textarea>
+        <p class="muted" style="font-size:0.8rem;margin: 0.3rem 0 0">
+          DNS servers Tailscale clients use for: MagicDNS, search-domain matches, and split-DNS lookups.
+          <strong>Other queries still go to each client's local resolver</strong> unless "Override local DNS" is on.
+        </p>
+      </div>
+
+      <label style="display:flex;align-items:flex-start;gap:0.6rem;margin: 1rem 0;cursor:pointer">
+        <input type="checkbox" name="override_local_dns" {% if override_local_dns %}checked{% endif %} style="margin-top:3px">
+        <span>
+          <strong>Override local DNS</strong>
+          <div class="muted" style="font-size:0.82rem;margin-top:2px">
+            When on, clients send <strong>all</strong> DNS queries to the global nameservers above — replacing their local resolver entirely. Useful for tailnet-wide ad-blocking (AdGuard/Pi-hole) or pushing internal-only DNS.
+          </div>
+        </span>
+      </label>
+
+      <div class="field">
+        <label for="search_domains">Search domains</label>
+        <textarea id="search_domains" name="search_domains" rows="2" placeholder="One per line:&#10;internal.example.com" style="font-family:var(--mono);font-size:0.9rem">{{ search_domains|join('\n') }}</textarea>
+        <p class="muted" style="font-size:0.8rem;margin: 0.3rem 0 0">Domains clients append to bare hostnames during DNS lookup (e.g. <code>laptop</code> → <code>laptop.internal.example.com</code>).</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Split DNS</h2>
+      <p class="muted" style="font-size:0.85rem;margin-top:0">Route specific domains to specific nameservers (e.g. <code>corp.example.com</code> → internal DNS).</p>
+      <div id="split-rows">
+        {% for domain, servers in split_dns %}
+          <div class="form-row split-row" style="margin-bottom: 0.5rem">
+            <input type="text" name="split_domain" value="{{ domain }}" placeholder="example.com">
+            <input type="text" name="split_servers" value="{{ servers|join(', ') }}" placeholder="1.2.3.4, 5.6.7.8">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
+          </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addSplitRow()" style="margin-top:0.5rem">+ Add domain</button>
+    </div>
+
+    <div class="card">
+      <h2>Custom DNS records</h2>
+      <p class="muted" style="font-size:0.85rem;margin-top:0">
+        Static DNS records pushed to all tailnet clients. The value field autocompletes:
+        <strong>A</strong> / <strong>AAAA</strong> suggest your node IPs, <strong>CNAME</strong> suggests other nodes' MagicDNS names and existing record names.
+      </p>
+
+      <datalist id="er-list-A">
+        {% for o in target_options.A %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
+      </datalist>
+      <datalist id="er-list-AAAA">
+        {% for o in target_options.AAAA %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
+      </datalist>
+      <datalist id="er-list-CNAME">
+        {% for o in target_options.CNAME %}<option value="{{ o.value }}">{{ o.label }}</option>{% endfor %}
+      </datalist>
+
+      <div id="er-rows">
+        {% for r in extra_records %}
+          <div class="form-row er-row" style="margin-bottom: 0.5rem">
+            <input type="text" name="er_name" value="{{ r.name }}" placeholder="myhost.example.com">
+            <select name="er_type" onchange="updateRecordList(this)" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);max-width:100px">
+              <option value="A"     {% if r.type == 'A' %}selected{% endif %}>A</option>
+              <option value="AAAA"  {% if r.type == 'AAAA' %}selected{% endif %}>AAAA</option>
+              <option value="CNAME" {% if r.type == 'CNAME' %}selected{% endif %}>CNAME</option>
+            </select>
+            <input type="text" name="er_value" value="{{ r.value }}" list="er-list-{{ r.type or 'A' }}" placeholder="IP or hostname (start typing to pick a node)" autocomplete="off">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
+          </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addRecordRow()" style="margin-top:0.5rem">+ Add record</button>
+    </div>
+
+    <div style="margin: 1.5rem 0">
+      <button type="submit" class="btn">Save &amp; restart Headscale</button>
+    </div>
+  </form>
+
+  <script>
+    function addSplitRow() {
+      const c = document.getElementById('split-rows');
+      const div = document.createElement('div');
+      div.className = 'form-row split-row';
+      div.style.marginBottom = '0.5rem';
+      div.innerHTML = `
+        <input type="text" name="split_domain" placeholder="example.com">
+        <input type="text" name="split_servers" placeholder="1.2.3.4, 5.6.7.8">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
+      `;
+      c.appendChild(div);
+    }
+    function addRecordRow() {
+      const c = document.getElementById('er-rows');
+      const div = document.createElement('div');
+      div.className = 'form-row er-row';
+      div.style.marginBottom = '0.5rem';
+      div.innerHTML = `
+        <input type="text" name="er_name" placeholder="myhost.example.com">
+        <select name="er_type" onchange="updateRecordList(this)" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);max-width:100px">
+          <option value="A">A</option>
+          <option value="AAAA">AAAA</option>
+          <option value="CNAME">CNAME</option>
+        </select>
+        <input type="text" name="er_value" list="er-list-A" placeholder="IP or hostname (start typing to pick a node)" autocomplete="off">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()">×</button>
+      `;
+      c.appendChild(div);
+    }
+    function updateRecordList(select) {
+      const row = select.closest('.er-row');
+      const valueInput = row.querySelector('input[name=er_value]');
+      valueInput.setAttribute('list', 'er-list-' + select.value);
+    }
+  </script>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block body %}
+  <div class="topbar">
+    <button class="hamburger" type="button" aria-label="Toggle menu" onclick="document.body.classList.toggle('sidebar-open')">☰</button>
+    <span class="brand"><span class="brand-dot"></span> Headscale Panel</span>
+  </div>
+
+  <div class="scrim" onclick="document.body.classList.remove('sidebar-open')"></div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-dot"></span> Headscale Panel</div>
+      <nav class="nav">
+        <a href="/" class="{% if active == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="/users" class="{% if active == 'users' %}active{% endif %}">Users</a>
+        <a href="/nodes" class="{% if active == 'nodes' %}active{% endif %}">Nodes</a>
+        <a href="/preauthkeys" class="{% if active == 'preauthkeys' %}active{% endif %}">Preauth keys</a>
+        <a href="/policy" class="{% if active == 'policy' %}active{% endif %}">Policy</a>
+        <a href="/dns" class="{% if active == 'dns' %}active{% endif %}">DNS</a>
+        <details class="nav-group" {% if active in ['diagnostics-routes','diagnostics-policy'] %}open{% endif %}>
+          <summary>Diagnostics</summary>
+          <a href="/diagnostics/routes" class="sub {% if active == 'diagnostics-routes' %}active{% endif %}">Route lookup</a>
+          <a href="/diagnostics/policy" class="sub {% if active == 'diagnostics-policy' %}active{% endif %}">Policy test</a>
+        </details>
+        <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="/account" class="muted" style="text-decoration:none{% if active == 'account' %};color:var(--text){% endif %}">{{ username }}</a>
+        <form method="post" action="/logout" class="inline-form">
+          <button type="submit" class="btn btn-secondary btn-sm">Sign out</button>
+        </form>
+      </div>
+    </aside>
+    <main>{% block main %}{% endblock %}</main>
+  </div>
+{% endblock %}

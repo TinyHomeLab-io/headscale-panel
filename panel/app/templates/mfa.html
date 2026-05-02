@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Two-factor — Headscale Panel{% endblock %}
+{% block body %}
+  <div class="auth">
+    <div class="auth-card">
+      <h1>Two-factor code</h1>
+      <p>Enter the 6-digit code from your authenticator app.</p>
+      <form method="post" action="/mfa">
+        <div class="field">
+          <label for="code">Code</label>
+          <input id="code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus autocomplete="one-time-code">
+        </div>
+        {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+        <button type="submit" class="btn btn-block">Verify</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

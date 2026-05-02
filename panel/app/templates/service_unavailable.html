@@ -1,0 +1,19 @@
+{% extends "_layout.html" %}
+{% block title %}{{ title }} — Headscale Panel{% endblock %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>{{ title }}</h1>
+      <p>Headscale didn't respond. It may be restarting after a recent change.</p>
+    </div>
+  </div>
+  <div class="card">
+    <p class="muted" style="margin-top:0">{{ detail }}</p>
+    <a href="{{ retry_url }}" class="btn">Try again</a>
+    <a href="/nodes" class="btn btn-secondary" style="margin-left:0.5rem">All nodes</a>
+  </div>
+  <script>
+    // Auto-retry after 3s — Headscale typically comes back within ~5s.
+    setTimeout(function () { window.location.href = '{{ retry_url }}'; }, 3000);
+  </script>
+{% endblock %}

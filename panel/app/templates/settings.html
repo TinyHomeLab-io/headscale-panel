@@ -1,0 +1,114 @@
+{% extends "_layout.html" %}
+{% block title %}Settings — Headscale Panel{% endblock %}
+{% set active = "settings" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Settings</h1>
+      <p>Server URL and TLS · saving restarts Headscale (~5–10s downtime)</p>
+    </div>
+  </div>
+
+  {% if flash %}<div class="flash flash-success">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/settings/structured"
+        onsubmit="return confirm('Save settings and restart Headscale (~5s downtime)?')">
+
+    <div class="card">
+      <h2>Server</h2>
+      <div class="field">
+        <label for="server_url">Server URL</label>
+        <input id="server_url" type="text" name="server_url" value="{{ server_url }}" placeholder="https://headscale.example.com" required>
+        <p class="muted" style="font-size:0.8rem;margin: 0.3rem 0 0">URL Tailscale clients use to reach this server. With TLS off, use <code>http://</code>; with TLS on, use <code>https://</code>.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>TLS</h2>
+      <div class="field">
+        <label for="tls_mode">Mode</label>
+        <select id="tls_mode" name="tls_mode" onchange="updateTLSMode(this.value)" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;max-width:280px">
+          <option value="none"        {% if tls_mode == 'none' %}selected{% endif %}>None — HTTP only</option>
+          <option value="letsencrypt" {% if tls_mode == 'letsencrypt' %}selected{% endif %}>Let's Encrypt — auto-issue</option>
+          <option value="manual"      {% if tls_mode == 'manual' %}selected{% endif %}>Manual certificate</option>
+        </select>
+      </div>
+
+      <div id="tls-letsencrypt" style="display:none;border-top:1px solid var(--border);padding-top:1rem;margin-top:1rem">
+        <p class="muted" style="font-size:0.85rem;margin-top:0">
+          Headscale handles ACME directly. Requires a public DNS record pointing to this server and the chosen challenge port reachable from the internet.
+        </p>
+        <div class="field">
+          <label for="tls_le_hostname">Hostname (FQDN)</label>
+          <input id="tls_le_hostname" type="text" name="tls_le_hostname" value="{{ tls_le_hostname }}" placeholder="headscale.example.com">
+          <p class="muted" style="font-size:0.8rem;margin: 0.3rem 0 0">Must resolve in public DNS to this server's public IP.</p>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="tls_le_challenge">Challenge type</label>
+            <select id="tls_le_challenge" name="tls_le_challenge" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+              <option value="HTTP-01"     {% if tls_le_challenge == 'HTTP-01' %}selected{% endif %}>HTTP-01 — needs port 80 open</option>
+              <option value="TLS-ALPN-01" {% if tls_le_challenge == 'TLS-ALPN-01' %}selected{% endif %}>TLS-ALPN-01 — needs port 443 open</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tls_le_listen">HTTP-01 listen address</label>
+            <input id="tls_le_listen" type="text" name="tls_le_listen" value="{{ tls_le_listen }}" placeholder=":http">
+          </div>
+        </div>
+        <div class="field">
+          <label for="tls_le_cache_dir">Cache directory</label>
+          <input id="tls_le_cache_dir" type="text" name="tls_le_cache_dir" value="{{ tls_le_cache_dir }}" placeholder="/var/lib/headscale/cache">
+        </div>
+      </div>
+
+      <div id="tls-manual" style="display:none;border-top:1px solid var(--border);padding-top:1rem;margin-top:1rem">
+        <p class="muted" style="font-size:0.85rem;margin-top:0">
+          Provide your own certificate. Files must be inside the bind-mounted <code>./data</code> directory (visible to the container at <code>/var/lib/headscale/</code>).
+        </p>
+        <div class="field">
+          <label for="tls_cert_path">Certificate file</label>
+          <input id="tls_cert_path" type="text" name="tls_cert_path" value="{{ tls_cert_path }}" placeholder="/var/lib/headscale/server.crt">
+        </div>
+        <div class="field">
+          <label for="tls_key_path">Private key file</label>
+          <input id="tls_key_path" type="text" name="tls_key_path" value="{{ tls_key_path }}" placeholder="/var/lib/headscale/server.key">
+        </div>
+      </div>
+
+      <div class="flash flash-info" style="margin-top: 1rem; font-size: 0.85rem">
+        <strong>Heads up:</strong> enabling TLS doesn't change the <code>listen_addr</code>. If you want HTTPS on port 443 you'll typically also need to update <code>listen_addr</code> (in the raw YAML editor below) and expose port 443 in <code>compose.yaml</code>.
+      </div>
+    </div>
+
+    <div style="margin: 1.5rem 0">
+      <button type="submit" class="btn">Save &amp; restart Headscale</button>
+    </div>
+  </form>
+
+  <details class="card" style="border-color: color-mix(in srgb, var(--warning) 35%, var(--border))">
+    <summary style="cursor:pointer;padding:0.5rem 0;font-weight:600;color:var(--warning)">⚠ Raw YAML editor (advanced)</summary>
+    <p class="muted" style="font-size:0.85rem;margin: 0.75rem 0 0.5rem">
+      Direct edit of <code>{{ config_path }}</code>. Anything in Headscale's
+      <a href="https://headscale.net/stable/ref/configuration/" target="_blank" rel="noopener">config reference</a>
+      can go here. <strong>Replaces the entire file</strong> — the structured forms above repopulate from it on save.
+    </p>
+    <form method="post" action="/settings/raw"
+          onsubmit="return confirm('Replace the entire config.yaml and restart Headscale?')">
+      <textarea name="raw_yaml" rows="22" spellcheck="false"
+                style="font-family:var(--mono);font-size:0.85rem;line-height:1.5;width:100%;padding:0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm)">{{ raw_yaml }}</textarea>
+      <div style="margin-top:0.75rem">
+        <button type="submit" class="btn btn-danger">Replace config &amp; restart Headscale</button>
+      </div>
+    </form>
+  </details>
+
+  <script>
+    function updateTLSMode(mode) {
+      document.getElementById('tls-letsencrypt').style.display = (mode === 'letsencrypt') ? 'block' : 'none';
+      document.getElementById('tls-manual').style.display = (mode === 'manual') ? 'block' : 'none';
+    }
+    updateTLSMode(document.getElementById('tls_mode').value);
+  </script>
+{% endblock %}

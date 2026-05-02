@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Headscale Panel{% endblock %}
+{% block body_class %}auth{% endblock %}
+{% block body %}
+  <div class="auth">
+    <div class="auth-card">
+      <h1><span class="brand-dot" style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:999px;margin-right:0.5rem"></span>Sign in</h1>
+      <form method="post" action="/login">
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" type="text" name="username" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" name="password" autocomplete="current-password" required>
+        </div>
+        {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+        <button type="submit" class="btn btn-block">Sign in</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

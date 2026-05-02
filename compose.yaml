@@ -1,0 +1,35 @@
+services:
+  headscale:
+    image: headscale/headscale:latest
+    container_name: headscale
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/var/lib/headscale
+      - ./config:/etc/headscale:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    command: serve
+
+  panel:
+    # Default: pull the published image. Pin a specific calendar version (e.g.
+    # :2026.05.02) for production; :latest is fine for tracking the most recent build.
+    image: ghcr.io/tinyhomelab-io/headscale-panel:latest
+    # To build from source instead, comment the `image:` line above and uncomment:
+    # build: ./panel
+    container_name: headscale-panel
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./panel-data:/data
+      # Headscale's data dir, for direct-DB bypass operations (IP edit, change user, etc.)
+      - ./data:/headscale-data:rw
+      # Headscale's config dir, for the Settings/DNS pages to manage config.yaml.
+      - ./config:/headscale-config:rw
+      # Docker socket so the panel can restart Headscale after a config or direct-DB write.
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:9000:9000"

@@ -1,0 +1,302 @@
+{% extends "_layout.html" %}
+{% block title %}Policy — Headscale Panel{% endblock %}
+{% set active = "policy" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Policy</h1>
+      <p>ACL rules + tag ownership for the tailnet</p>
+    </div>
+  </div>
+
+  {% if flash %}<div class="flash flash-success">{{ flash }}</div>{% endif %}
+  {% if save_error %}<div class="flash flash-error">{{ save_error }}</div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <div class="card" style="padding: 0">
+    <div style="padding: 1.25rem 1.25rem 0.75rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap">
+      <h2 style="margin:0">Rules ({{ rules|length }})</h2>
+      <span class="muted" style="font-size:0.8rem">Order matters — first match wins</span>
+    </div>
+
+    <div class="table-wrap" style="border:none;border-radius:0">
+      <table class="data" style="border:none">
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            <th style="width:90px">Action</th>
+            <th>Source</th>
+            <th>Destination</th>
+            <th style="width:90px">Proto</th>
+            <th>Ports</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rules-tbody">
+          {% for r in rules %}
+            <tr class="rule-row{% if highlight_index is not none and r.i == highlight_index %} highlighted{% endif %}" draggable="true" data-index="{{ r.i }}" id="rule-{{ r.i }}">
+              <td class="mono muted">
+                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>{{ r.i + 1 }}
+              </td>
+              <td>
+                {% if r.action == 'accept' %}
+                  <span style="display:inline-block;background:color-mix(in srgb, var(--success) 18%, transparent);color:var(--success);padding:2px 9px;border-radius:999px;font-size:0.78rem;font-weight:600">accept</span>
+                {% else %}
+                  <span style="display:inline-block;background:color-mix(in srgb, var(--danger) 18%, transparent);color:var(--danger);padding:2px 9px;border-radius:999px;font-size:0.78rem;font-weight:600">drop</span>
+                {% endif %}
+              </td>
+              <td>
+                {% for s in r.src %}
+                  <span class="chip" style="font-size:0.78rem">{{ s }}</span>
+                {% endfor %}
+              </td>
+              <td>
+                {% for d in r.dsts %}
+                  <span class="chip" style="font-size:0.78rem">{{ d.alias }}</span>
+                {% endfor %}
+              </td>
+              <td class="mono" style="font-size:0.82rem;text-transform:uppercase">{{ r.proto if r.proto else 'any' }}</td>
+              <td class="mono" style="font-size:0.82rem">{{ r.port_summary }}</td>
+              <td class="actions">
+                <form method="post" action="/policy/rules/move" class="inline-form">
+                  <input type="hidden" name="index" value="{{ r.i }}">
+                  <input type="hidden" name="direction" value="up">
+                  <button type="submit" class="btn btn-secondary btn-sm" title="Move up" {% if loop.first %}disabled style="opacity:0.35;cursor:not-allowed"{% endif %}>↑</button>
+                </form>
+                <form method="post" action="/policy/rules/move" class="inline-form">
+                  <input type="hidden" name="index" value="{{ r.i }}">
+                  <input type="hidden" name="direction" value="down">
+                  <button type="submit" class="btn btn-secondary btn-sm" title="Move down" {% if loop.last %}disabled style="opacity:0.35;cursor:not-allowed"{% endif %}>↓</button>
+                </form>
+                <form method="post" action="/policy/rules/delete" class="inline-form"
+                      onsubmit="return confirm('Delete rule {{ r.i + 1 }}?')">
+                  <input type="hidden" name="index" value="{{ r.i }}">
+                  <button type="submit" class="btn btn-secondary btn-sm" title="Delete rule">×</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if not rules %}
+            <tr><td colspan="7"><div class="empty" style="margin:0.5rem">No rules — by default Headscale denies all traffic.</div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <form method="post" action="/policy/rules/add" style="padding:1.25rem;border-top:1px solid var(--border);background:var(--bg)">
+      <h2 style="margin:0 0 0.75rem;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim)">Add rule</h2>
+      <div style="display:grid;grid-template-columns:110px 1fr 1fr 110px 130px auto;gap:0.6rem;align-items:flex-end" id="add-rule-grid">
+        <div class="field" style="margin:0">
+          <label for="action">Action</label>
+          <select id="action" name="action" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            <option value="accept">accept</option>
+            <option value="drop">drop</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label for="src">Source</label>
+          <input id="src" type="text" name="src" required placeholder="* or user1@ or tag:server" list="alias_list" autocomplete="off">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="dst">Destination</label>
+          <input id="dst" type="text" name="dst" required placeholder="* or tag:server or 10.0.0.0/24" list="alias_list" autocomplete="off">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="proto">Protocol</label>
+          <select id="proto" name="proto" onchange="onProtoChange()" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            <option value="">Any</option>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+            <option value="icmpv6">ICMPv6</option>
+            <option value="sctp">SCTP</option>
+            <option value="igmp">IGMP</option>
+            <option value="gre">GRE</option>
+            <option value="esp">ESP</option>
+            <option value="ah">AH</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0" id="ports-field">
+          <label for="ports">Ports</label>
+          <input id="ports" type="text" name="ports" value="*" placeholder="* or 22 or 80,443" autocomplete="off">
+        </div>
+        <button type="submit" class="btn">+ Add</button>
+      </div>
+      <datalist id="alias_list">
+        {% for o in alias_options %}
+          <option value="{{ o.value }}">{{ o.label }}</option>
+        {% endfor %}
+      </datalist>
+      <p class="muted" style="font-size:0.78rem;margin: 0.7rem 0 0">
+        Multiple values? Space- or comma-separate (e.g. <code>user1@ user2@</code>).
+        Protocol "Any" matches TCP+UDP+ICMP. ICMP/IGMP/GRE/ESP/AH ignore ports.
+      </p>
+    </form>
+  </div>
+
+  <script>
+    // Scroll a highlighted rule into view (when arriving via diagnostics link).
+    (function () {
+      var hl = document.querySelector('.rule-row.highlighted');
+      if (hl) hl.scrollIntoView({behavior: 'smooth', block: 'center'});
+    })();
+
+    function onProtoChange() {
+      var p = document.getElementById('proto').value;
+      var portsField = document.getElementById('ports-field');
+      var portsInput = document.getElementById('ports');
+      var portless = ['icmp','icmpv6','igmp','gre','esp','ah'];
+      if (portless.indexOf(p) !== -1) {
+        portsField.style.opacity = '0.4';
+        portsInput.value = '*';
+        portsInput.disabled = true;
+      } else {
+        portsField.style.opacity = '1';
+        portsInput.disabled = false;
+      }
+    }
+
+    // Drag-and-drop reordering for rules. Touch users keep the ↑/↓ buttons
+    // since HTML5 DnD is unreliable on touchscreens.
+    (function () {
+      var tbody = document.getElementById('rules-tbody');
+      if (!tbody) return;
+
+      function currentOrder() {
+        return Array.from(tbody.querySelectorAll('tr.rule-row'))
+          .map(function (tr) { return tr.dataset.index; }).join(',');
+      }
+
+      var originalOrder = currentOrder();
+      var dragRow = null;
+      var lastTarget = null;
+
+      function clearTargets() {
+        if (lastTarget) {
+          lastTarget.classList.remove('drop-above', 'drop-below');
+          lastTarget = null;
+        }
+      }
+
+      tbody.addEventListener('dragstart', function (e) {
+        var row = e.target.closest('tr.rule-row');
+        if (!row) return;
+        dragRow = row;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox requires data to be set on the transfer.
+        e.dataTransfer.setData('text/plain', row.dataset.index);
+      });
+
+      tbody.addEventListener('dragend', function () {
+        clearTargets();
+        if (!dragRow) return;
+        dragRow.classList.remove('dragging');
+        dragRow = null;
+
+        var newOrder = currentOrder();
+        if (newOrder === originalOrder) return;
+
+        var f = document.createElement('form');
+        f.method = 'POST';
+        f.action = '/policy/rules/reorder';
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'order';
+        input.value = newOrder;
+        f.appendChild(input);
+        document.body.appendChild(f);
+        f.submit();
+      });
+
+      tbody.addEventListener('dragover', function (e) {
+        if (!dragRow) return;
+        e.preventDefault();
+        var row = e.target.closest('tr.rule-row');
+        if (!row || row === dragRow) return;
+
+        clearTargets();
+        var rect = row.getBoundingClientRect();
+        var midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          row.classList.add('drop-above');
+          tbody.insertBefore(dragRow, row);
+        } else {
+          row.classList.add('drop-below');
+          tbody.insertBefore(dragRow, row.nextSibling);
+        }
+        lastTarget = row;
+      });
+
+      tbody.addEventListener('drop', function (e) {
+        e.preventDefault();
+        clearTargets();
+      });
+    })();
+  </script>
+
+  <div class="card">
+    <h2>Tag owners</h2>
+    <p class="muted" style="font-size:0.85rem;margin-top:0">
+      Tags must be declared here before nodes can be tagged with them. Owners are users (e.g. <code>user1@</code>) or groups (e.g. <code>group:admins</code>) who can assign the tag.
+    </p>
+
+    {% if tag_owners %}
+      <div class="table-wrap" style="margin: 0.75rem 0">
+        <table class="data">
+          <thead>
+            <tr><th>Tag</th><th>Owners</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for tag, owners in tag_owners.items() %}
+              <tr>
+                <td class="mono" style="vertical-align:middle">{{ tag }}</td>
+                <td>
+                  <div class="chips" style="margin: 0; align-items:center">
+                    {% for o in owners %}
+                      <span class="chip" style="font-size:0.8rem">
+                        {{ o }}
+                        <form method="post" action="/policy/tagowners/owner/remove" class="chip-form">
+                          <input type="hidden" name="tag" value="{{ tag }}">
+                          <input type="hidden" name="owner" value="{{ o }}">
+                          <button type="submit" class="chip-x" title="Remove owner">×</button>
+                        </form>
+                      </span>
+                    {% endfor %}
+                    <form method="post" action="/policy/tagowners/owner/add" class="inline-form" style="display:inline-flex;gap:4px">
+                      <input type="hidden" name="tag" value="{{ tag }}">
+                      <input type="text" name="owner" placeholder="add owner (e.g. user1@)" required autocomplete="off"
+                             style="font-size:0.8rem;padding:3px 8px;height:26px;width:170px;border-radius:999px;background:var(--bg);border:1px solid var(--border-strong)">
+                      <button type="submit" class="btn btn-secondary btn-sm" style="height:26px;padding:0 10px;font-size:0.8rem">+</button>
+                    </form>
+                  </div>
+                </td>
+                <td class="actions" style="vertical-align:middle">
+                  <form method="post" action="/policy/tagowners/remove" class="inline-form"
+                        onsubmit="return confirm('Remove tag {{ tag }} entirely? Nodes currently tagged with it may become invalid.')">
+                    <input type="hidden" name="tag" value="{{ tag }}">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Delete tag">×</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <form method="post" action="/policy/tagowners/add">
+      <div class="form-row">
+        <div class="field">
+          <label for="new_tag">New tag</label>
+          <input id="new_tag" type="text" name="tag" required placeholder="e.g. server" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="new_owners">Owners</label>
+          <input id="new_owners" type="text" name="owners" required placeholder="user1@ user2@" autocomplete="off">
+        </div>
+        <button type="submit" class="btn">Add tag</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

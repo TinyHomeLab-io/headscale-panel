@@ -1,0 +1,95 @@
+{% extends "_layout.html" %}
+{% block title %}Users — Headscale Panel{% endblock %}
+{% set active = "users" %}
+{% block main %}
+  <div class="page-header">
+    <div>
+      <h1>Users</h1>
+      <p>Headscale user accounts (tailnet identities)</p>
+    </div>
+  </div>
+
+  {% if created %}<div class="flash flash-success">Created user <strong>{{ created }}</strong></div>{% endif %}
+  {% if deleted %}<div class="flash flash-success">Deleted user <strong>{{ deleted }}</strong></div>{% endif %}
+  {% if renamed %}<div class="flash flash-success">Renamed to <strong>{{ renamed }}</strong></div>{% endif %}
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <h2>Create user</h2>
+    <form method="post" action="/users" class="form-row">
+      <div class="field">
+        <label for="name">Username</label>
+        <input id="name" type="text" name="name" required pattern="[a-z0-9-]+" minlength="1" placeholder="e.g. user1" autocomplete="off">
+      </div>
+      <button type="submit" class="btn">Create</button>
+    </form>
+  </div>
+
+  <dialog id="user-rename-dialog" style="border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elev);color:var(--text);padding:0;max-width:380px;width:90vw">
+    <form method="post" id="user-rename-form" style="padding: 1.25rem">
+      <h2 style="margin:0 0 0.5rem;font-size:1rem">Rename user</h2>
+      <p class="muted" style="margin:0 0 1rem;font-size:0.85rem">Currently: <strong class="cur"></strong></p>
+      <div class="field">
+        <label for="user-rename-input">New username</label>
+        <input id="user-rename-input" type="text" name="new_name" required pattern="[a-z0-9-]+" minlength="1" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('user-rename-dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-sm">Rename</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    function openUserRename(id, name) {
+      var d = document.getElementById('user-rename-dialog');
+      var f = document.getElementById('user-rename-form');
+      f.action = '/users/' + id + '/rename';
+      f.querySelector('input[name=new_name]').value = name;
+      f.querySelector('.cur').textContent = name;
+      d.showModal();
+      f.querySelector('input[name=new_name]').select();
+    }
+    document.getElementById('user-rename-dialog').addEventListener('click', function (e) {
+      if (e.target === this) this.close();
+    });
+  </script>
+
+  <div class="card" style="padding: 0">
+    <div style="padding: 1.25rem 1.25rem 0.75rem">
+      <h2 style="margin:0">Existing</h2>
+    </div>
+    {% if users %}
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="data" style="border:none">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+              <tr>
+                <td class="mono">{{ u.id }}</td>
+                <td>{{ u.name }}</td>
+                <td class="muted">{{ u.createdAt[:19].replace("T", " ") if u.createdAt else "—" }}</td>
+                <td class="actions">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          onclick="openUserRename('{{ u.id }}', '{{ u.name|e }}')">Rename</button>
+                  <form method="post" action="/users/{{ u.id }}/delete" class="inline-form" onsubmit="return confirm('Delete user {{ u.name }}? Their nodes must be removed first.')">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty" style="margin: 1.25rem">No users in Headscale yet.</div>
+    {% endif %}
+  </div>
+{% endblock %}
