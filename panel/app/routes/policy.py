@@ -317,6 +317,25 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
 
     tag_owners = doc.get("tagOwners") or {}
 
+    # If no rule already covers everything, the implicit deny is what runs at the
+    # bottom — show it in the table so users understand why traffic gets blocked.
+    has_catchall_allow = False
+    for r in doc.get("acls") or []:
+        if r.get("action") != "accept":
+            continue
+        proto = (r.get("proto") or "").lower()
+        if proto and proto not in ("", "any"):
+            continue
+        if "*" not in (r.get("src") or []):
+            continue
+        for d in r.get("dst") or []:
+            alias, _port = _split_dst(d)
+            if alias == "*":
+                has_catchall_allow = True
+                break
+        if has_catchall_allow:
+            break
+
     highlight_str = request.query_params.get("highlight", "")
     highlight_index = int(highlight_str) if highlight_str.isdigit() else None
 
@@ -328,6 +347,7 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
             "rules": rules,
             "tag_owners": tag_owners,
             "users": users,
+            "has_catchall_allow": has_catchall_allow,
             "alias_options": _alias_options(doc, users),
             "owner_options": _owner_options(doc, users),
             "error": error,

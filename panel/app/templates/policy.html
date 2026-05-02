@@ -87,6 +87,19 @@
           {% if not rules %}
             <tr><td colspan="7"><div class="empty" style="margin:0.5rem">No rules — by default Headscale denies all traffic.</div></td></tr>
           {% endif %}
+          {% if not has_catchall_allow %}
+            <tr style="background:color-mix(in srgb, var(--danger) 7%, var(--bg))">
+              <td class="mono muted" style="vertical-align:middle">—</td>
+              <td>
+                <span style="display:inline-block;background:color-mix(in srgb, var(--danger) 18%, transparent);color:var(--danger);padding:2px 9px;border-radius:999px;font-size:0.78rem;font-weight:600">deny</span>
+              </td>
+              <td><span class="chip" style="font-size:0.78rem">*</span></td>
+              <td><span class="chip" style="font-size:0.78rem">*</span></td>
+              <td class="mono" style="font-size:0.82rem;text-transform:uppercase">any</td>
+              <td class="mono" style="font-size:0.82rem">*</td>
+              <td class="muted" style="font-size:0.78rem;font-style:italic;text-align:right;padding-right:1rem">implicit (Tailscale v2 default)</td>
+            </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>
@@ -98,7 +111,6 @@
           <label for="action">Action</label>
           <select id="action" name="action" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
             <option value="accept">accept</option>
-            <option value="drop">drop</option>
           </select>
         </div>
         <div class="field" style="margin:0">
@@ -151,7 +163,6 @@
           <label for="edit-action">Action</label>
           <select id="edit-action" name="action" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg-elev);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
             <option value="accept">accept</option>
-            <option value="drop">drop</option>
           </select>
         </div>
         <div class="field" style="margin:0">
