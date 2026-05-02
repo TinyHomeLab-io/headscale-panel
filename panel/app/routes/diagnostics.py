@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..deps import require_authenticated
 from .dashboard import _route_lookup
-from .policy import _alias_options, _evaluate_policy, _load
+from .policy import _alias_options, _evaluate_policy, load_policy
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -72,7 +72,7 @@ def policy_test(request: Request, sess: dict = Depends(require_authenticated)):
         try:
             nodes = hs.list_nodes()
             users = hs.list_users()
-            doc = _load(hs)
+            doc = load_policy(hs)
         except (httpx.HTTPError, json.JSONDecodeError) as e:
             error = f"Could not load Headscale state: {e}"
     else:

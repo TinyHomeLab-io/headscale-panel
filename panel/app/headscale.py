@@ -4,7 +4,7 @@ import httpx
 
 
 class HeadscaleClient:
-    def __init__(self, base_url: str, api_key: str, timeout: float = 10.0):
+    def __init__(self, base_url: str, api_key: str, timeout: float = 10.0, verify_tls: bool = True):
         if not api_key:
             raise RuntimeError("PANEL_HEADSCALE_API_KEY is empty")
         self.base_url = base_url.rstrip("/")
@@ -12,6 +12,7 @@ class HeadscaleClient:
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
+            verify=verify_tls,
         )
 
     def close(self) -> None:

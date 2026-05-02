@@ -460,14 +460,79 @@ def add_tag(
         return RedirectResponse(f"/nodes/{node_id}?flash=Tag+already+set", status_code=status.HTTP_303_SEE_OTHER)
     existing.append(new_tag)
 
+    auto_declared = False
     try:
         hs.set_tags(node_id, existing)
     except httpx.HTTPStatusError as e:
-        return RedirectResponse(
-            f"/nodes/{node_id}?error={_format_error(e, 'Could not add tag')}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(f"/nodes/{node_id}?flash=Tag+added", status_code=status.HTTP_303_SEE_OTHER)
+        # Headscale rejects tags that aren't declared in the policy's tagOwners
+        # ("requested tags [tag:X] are invalid or not permitted"). Auto-declare
+        # the tag using the node's owner and retry, so applying a fresh tag from
+        # the node page Just Works.
+        if _looks_like_undeclared_tag_error(e):
+            owner_alias = _node_owner_alias(node)
+            if owner_alias and _try_declare_tag_owner(hs, new_tag, owner_alias):
+                auto_declared = True
+                try:
+                    hs.set_tags(node_id, existing)
+                except httpx.HTTPStatusError as e2:
+                    return RedirectResponse(
+                        f"/nodes/{node_id}?error={_format_error(e2, 'Could not add tag (after auto-declare)')}",
+                        status_code=status.HTTP_303_SEE_OTHER,
+                    )
+            else:
+                return RedirectResponse(
+                    f"/nodes/{node_id}?error={_format_error(e, 'Could not add tag')}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+        else:
+            return RedirectResponse(
+                f"/nodes/{node_id}?error={_format_error(e, 'Could not add tag')}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+    flash = (
+        f"Tag+added+%E2%80%94+also+declared+in+policy+with+owner+{owner_alias}".replace("@", "%40")
+        if auto_declared else "Tag+added"
+    )
+    return RedirectResponse(f"/nodes/{node_id}?flash={flash}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _looks_like_undeclared_tag_error(e: httpx.HTTPStatusError) -> bool:
+    try:
+        body = e.response.json()
+        msg = (body.get("message") or body.get("error") or "").lower()
+    except Exception:
+        msg = (e.response.text or "").lower()
+    return "invalid or not permitted" in msg
+
+
+def _node_owner_alias(node: dict) -> str:
+    name = (node.get("user") or {}).get("name", "").strip()
+    return f"{name}@" if name else ""
+
+
+def _try_declare_tag_owner(hs, tag: str, owner: str) -> bool:
+    """Add `tag → [owner]` to the policy's tagOwners. Returns True on success."""
+    from .policy import DEFAULT_POLICY, load_policy, save_policy
+
+    try:
+        doc = load_policy(hs)
+    except (httpx.HTTPError, ValueError):
+        log.warning("auto-declare: could not load policy")
+        return False
+    owners = dict(doc.get("tagOwners") or {})
+    existing = list(owners.get(tag, []))
+    if owner not in existing:
+        existing.append(owner)
+    owners[tag] = sorted(set(existing))
+    new_doc = dict(doc)
+    new_doc["tagOwners"] = owners
+    try:
+        save_policy(hs, new_doc)
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("auto-declare: save_policy failed: %s", e)
+        return False
+    log.info("auto-declared tag %s with owner %s", tag, owner)
+    return True
 
 
 @router.post("/nodes/{node_id}/tags/remove")

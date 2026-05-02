@@ -265,7 +265,8 @@
                     {% endfor %}
                     <form method="post" action="/policy/tagowners/owner/add" class="inline-form" style="display:inline-flex;gap:4px">
                       <input type="hidden" name="tag" value="{{ tag }}">
-                      <input type="text" name="owner" placeholder="add owner (e.g. user1@)" required autocomplete="off"
+                      <input type="text" name="owner" placeholder="add owner" required autocomplete="off"
+                             list="owner_list"
                              style="font-size:0.8rem;padding:3px 8px;height:26px;width:170px;border-radius:999px;background:var(--bg);border:1px solid var(--border-strong)">
                       <button type="submit" class="btn btn-secondary btn-sm" style="height:26px;padding:0 10px;font-size:0.8rem">+</button>
                     </form>
@@ -293,10 +294,18 @@
         </div>
         <div class="field">
           <label for="new_owners">Owners</label>
-          <input id="new_owners" type="text" name="owners" required placeholder="user1@ user2@" autocomplete="off">
+          <input id="new_owners" type="text" name="owners" required
+                 placeholder="{% if owner_options %}{{ owner_options[:2] | map(attribute='value') | join(' ') }}{% else %}user1@ user2@{% endif %}"
+                 list="owner_list" autocomplete="off">
         </div>
         <button type="submit" class="btn">Add tag</button>
       </div>
     </form>
+
+    <datalist id="owner_list">
+      {% for o in owner_options %}
+        <option value="{{ o.value }}">{{ o.label }}</option>
+      {% endfor %}
+    </datalist>
   </div>
 {% endblock %}

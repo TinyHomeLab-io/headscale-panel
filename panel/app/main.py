@@ -40,8 +40,16 @@ def create_app() -> FastAPI:
         else:
             log.warning("PANEL_BOOTSTRAP_USER/PASSWORD not set — no users will be auto-created")
         if cfg.headscale_api_key:
-            app.state.hs = HeadscaleClient(cfg.headscale_url, cfg.headscale_api_key)
-            log.info("headscale client initialised: %s", cfg.headscale_url)
+            app.state.hs = HeadscaleClient(
+                cfg.headscale_url,
+                cfg.headscale_api_key,
+                verify_tls=cfg.headscale_verify_tls,
+            )
+            log.info(
+                "headscale client initialised: %s (verify_tls=%s)",
+                cfg.headscale_url,
+                cfg.headscale_verify_tls,
+            )
         else:
             app.state.hs = None
             log.warning("PANEL_HEADSCALE_API_KEY not set — Headscale integration disabled")

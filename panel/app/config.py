@@ -6,6 +6,7 @@ from dataclasses import dataclass
 class Config:
     db_path: str
     headscale_url: str
+    headscale_verify_tls: bool
     headscale_api_key: str
     bootstrap_user: str
     bootstrap_pass: str
@@ -25,6 +26,7 @@ def load_config() -> Config:
     return Config(
         db_path=os.getenv("PANEL_DB_PATH", "/data/panel.sqlite"),
         headscale_url=os.getenv("PANEL_HEADSCALE_URL", "http://headscale:8080"),
+        headscale_verify_tls=os.getenv("PANEL_HEADSCALE_VERIFY_TLS", "true").lower() != "false",
         headscale_api_key=os.getenv("PANEL_HEADSCALE_API_KEY", ""),
         bootstrap_user=os.getenv("PANEL_BOOTSTRAP_USER", ""),
         bootstrap_pass=os.getenv("PANEL_BOOTSTRAP_PASSWORD", ""),

@@ -18,8 +18,23 @@ log = logging.getLogger("panel.policy")
 DEFAULT_POLICY: dict = {"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]}
 
 
-def _load(hs) -> dict:
-    raw = hs.get_policy()
+def load_policy(hs) -> dict:
+    # Headscale 0.28: GET /api/v1/policy returns HTTP 500 with body
+    # {"message": "loading ACL from database: acl policy not found"} when the
+    # database is in `database` policy mode but no policy has been written yet.
+    # Treat that as "no policy → use default" instead of bubbling the 500.
+    try:
+        raw = hs.get_policy()
+    except httpx.HTTPStatusError as e:
+        body_text = ""
+        try:
+            body = e.response.json()
+            body_text = body.get("message") or body.get("error") or ""
+        except Exception:
+            body_text = e.response.text or ""
+        if "acl policy not found" in body_text.lower():
+            return dict(DEFAULT_POLICY)
+        raise
     s = raw.get("policy", "") if raw else ""
     if not s.strip():
         return dict(DEFAULT_POLICY)
@@ -34,7 +49,7 @@ def _load(hs) -> dict:
         return json.loads(cleaned)
 
 
-def _save(hs, doc: dict) -> None:
+def save_policy(hs, doc: dict) -> None:
     hs.set_policy(json.dumps(doc, indent=2))
 
 
@@ -250,6 +265,18 @@ def _alias_options(doc: dict, users: list[dict]) -> list[dict]:
     return opts
 
 
+def _owner_options(doc: dict, users: list[dict]) -> list[dict]:
+    """Build dropdown suggestions for tag-owner inputs (users + groups only)."""
+    opts: list[dict] = []
+    for u in users:
+        name = u.get("name", "")
+        if name:
+            opts.append({"value": f"{name}@", "label": f"{name}@ (user)"})
+    for g in (doc.get("groups") or {}).keys():
+        opts.append({"value": g, "label": f"{g} (group)"})
+    return opts
+
+
 @router.get("/policy")
 def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
     hs = request.app.state.hs
@@ -260,7 +287,7 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
         error = "Headscale client not configured"
     else:
         try:
-            doc = _load(hs)
+            doc = load_policy(hs)
             users = hs.list_users()
         except (httpx.HTTPError, json.JSONDecodeError) as e:
             error = f"Could not load policy: {e}"
@@ -298,6 +325,7 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
             "tag_owners": tag_owners,
             "users": users,
             "alias_options": _alias_options(doc, users),
+            "owner_options": _owner_options(doc, users),
             "error": error,
             "flash": request.query_params.get("flash"),
             "save_error": request.query_params.get("save_error"),
@@ -348,7 +376,7 @@ def add_rule(
             dst_list.append(f"{d}:{port_spec}")
 
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         rules = doc.get("acls") or []
         rule = {
             "action": action if action in ("accept", "drop") else "accept",
@@ -359,7 +387,7 @@ def add_rule(
             rule["proto"] = proto
         rules.append(rule)
         doc["acls"] = rules
-        _save(hs, doc)
+        save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -385,7 +413,7 @@ async def reorder_rules(
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
 
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         rules = doc.get("acls") or []
         # Validate: must be a permutation of 0..len(rules)-1
         if sorted(indices) != list(range(len(rules))):
@@ -397,7 +425,7 @@ async def reorder_rules(
         if new_rules == rules:
             return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
         doc["acls"] = new_rules
-        _save(hs, doc)
+        save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -417,7 +445,7 @@ def move_rule(
     if not hs:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         rules = doc.get("acls") or []
         if direction == "up" and 0 < index < len(rules):
             rules[index - 1], rules[index] = rules[index], rules[index - 1]
@@ -426,7 +454,7 @@ def move_rule(
         else:
             return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
         doc["acls"] = rules
-        _save(hs, doc)
+        save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -445,12 +473,12 @@ def delete_rule(
     if not hs:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         rules = doc.get("acls") or []
         if 0 <= index < len(rules):
             rules.pop(index)
             doc["acls"] = rules
-            _save(hs, doc)
+            save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -481,11 +509,11 @@ def add_tag_owner(
         )
 
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         existing = doc.get("tagOwners") or {}
         existing[tag] = sorted(set(existing.get(tag, []) + owner_list))
         doc["tagOwners"] = existing
-        _save(hs, doc)
+        save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -510,7 +538,7 @@ def add_one_owner(
     if not owner:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         existing = doc.get("tagOwners") or {}
         if tag not in existing:
             return RedirectResponse(
@@ -520,7 +548,7 @@ def add_one_owner(
         if owner not in existing[tag]:
             existing[tag].append(owner)
             doc["tagOwners"] = existing
-            _save(hs, doc)
+            save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -542,7 +570,7 @@ def remove_one_owner(
     if not hs:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         existing = doc.get("tagOwners") or {}
         if tag in existing:
             new_owners = [o for o in existing[tag] if o != owner]
@@ -553,7 +581,7 @@ def remove_one_owner(
                 )
             existing[tag] = new_owners
             doc["tagOwners"] = existing
-            _save(hs, doc)
+            save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",
@@ -575,11 +603,11 @@ def remove_tag_owner(
     if not hs:
         return RedirectResponse("/policy", status_code=status.HTTP_303_SEE_OTHER)
     try:
-        doc = _load(hs)
+        doc = load_policy(hs)
         existing = doc.get("tagOwners") or {}
         existing.pop(tag, None)
         doc["tagOwners"] = existing
-        _save(hs, doc)
+        save_policy(hs, doc)
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         return RedirectResponse(
             f"/policy?save_error={quote_plus(_format_save_error(e))}",

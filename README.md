@@ -90,6 +90,7 @@ Static infrastructure settings that don't change at runtime. Edit manually; the 
 | `HEADSCALE_DERP_*` | yes | (Tailscale public) | DERP relay config |
 | `HEADSCALE_LOG_LEVEL` | no | `info` | |
 | `PANEL_HEADSCALE_URL` | yes | `http://headscale:8080` | URL the panel uses to reach Headscale (Docker network DNS) |
+| `PANEL_HEADSCALE_VERIFY_TLS` | no | `true` | Set `false` when the URL above doesn't match Headscale's cert (e.g. `https://localhost` while the cert is for a public hostname) |
 | `PANEL_HEADSCALE_CONTAINER` | yes | `headscale` | Container name to restart after direct-DB writes |
 | `PANEL_HEADSCALE_API_KEY` | **yes** | — | Mint via `headscale apikeys create`; required for the panel to talk to Headscale |
 | `PANEL_BOOTSTRAP_USER` | first-run | `admin` | Created on first start if no panel users exist |
@@ -176,7 +177,7 @@ Node detail page (`/nodes/<id>`):
 - Rename
 - Routes — checkboxes for each advertised subnet route plus a separate "Use as exit node" toggle. Approved-but-no-longer-advertised routes are flagged in amber.
 - IP addresses (advanced) — direct-DB edit with prefix + uniqueness validation
-- Tags — chips with × to remove individually, an "Add tag" input
+- Tags — chips with × to remove individually, an "Add tag" input. If you add a tag that hasn't been declared in the policy yet, the panel auto-declares it in `tagOwners` using the node's owner as the new tag owner, then applies the tag.
 - Change user (advanced) — direct-DB reassignment
 
 ### Preauth keys
@@ -188,9 +189,11 @@ Create keys (user dropdown, expiration preset, reusable / ephemeral toggles), ex
 Firewall-style ACL editor.
 
 - **Rules** — table with #, Action (accept/drop pill), Source, Destination, Proto, Ports, ↑/↓/× actions. Drag the `⋮⋮` handle to reorder; ↑/↓ buttons work as a touch-friendly fallback. Add-rule form below the table; protocols that don't carry ports (ICMP, IGMP, GRE, ESP, AH) automatically hide the ports field.
-- **Tag owners** — declare tags before nodes can use them. Each row has chips per owner with × to remove, plus an inline "add owner" form.
+- **Tag owners** — declare tags before nodes can use them. Each row has chips per owner with × to remove, plus an inline "add owner" form. Owner inputs autocomplete from the current users + groups. Adding a tag from a node's detail page also auto-declares it here using that node's owner.
 
 Saves write back to the policy via Headscale's API. The policy lives in the DB (because `HEADSCALE_POLICY_MODE=database`), so no file edits.
+
+> Headscale's policy API requires `HEADSCALE_POLICY_MODE=database`. If it's set to `file` (the Headscale default), all policy writes are rejected with `update is disabled for modes other than 'database'`. Headscale 0.28 also returns HTTP 500 on `GET /api/v1/policy` when database mode is on but no policy has been written yet (`acl policy not found`); the panel handles this gracefully and shows the default policy.
 
 ### DNS
 
