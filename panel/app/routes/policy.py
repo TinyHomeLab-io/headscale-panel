@@ -59,6 +59,9 @@ def _split_dst(dst: str) -> tuple[str, str]:
     if idx < 0:
         return dst, "*"
     port = dst[idx + 1 :]
+    # Empty (e.g. trailing '::' on an IPv6 prefix like fd7a:115c:a1e0::) — alias only.
+    if not port:
+        return dst, "*"
     # Port spec characters: digits, ranges (-), comma, *
     if port == "*" or all(c.isdigit() or c in "-," for c in port):
         return dst[:idx], port
@@ -268,8 +271,15 @@ def _alias_options(doc: dict, users: list[dict], nodes: list[dict] | None = None
         opts.append({"value": h, "label": f"{h} (host)"})
     for n in nodes or []:
         nname = n.get("givenName") or n.get("name", "")
-        for ip in n.get("ipAddresses") or []:
-            opts.append({"value": ip, "label": f"{ip} ({nname})"})
+        ips = n.get("ipAddresses") or []
+        # Combined "all IPs" entry first so it sorts above the single-IP rows
+        # in the dropdown — picking it space-separates both IPs into the field
+        # and the route splits them back into two dst aliases.
+        if len(ips) >= 2:
+            opts.append({"value": " ".join(ips), "label": f"{nname} (IPv4 + IPv6)"})
+        for ip in ips:
+            family = "IPv6" if ":" in ip else "IPv4"
+            opts.append({"value": ip, "label": f"{ip} — {nname} ({family})"})
     return opts
 
 
@@ -301,6 +311,15 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
             nodes = hs.list_nodes()
         except (httpx.HTTPError, json.JSONDecodeError) as e:
             error = f"Could not load policy: {e}"
+
+    # IP -> node-name map so the rules table can display "s3" instead of bare IPs.
+    ip_to_node: dict[str, str] = {}
+    for n in nodes or []:
+        nname = n.get("givenName") or n.get("name", "")
+        if not nname:
+            continue
+        for ip in n.get("ipAddresses") or []:
+            ip_to_node[ip] = nname
 
     rules = []
     for i, r in enumerate(doc.get("acls") or []):
@@ -356,6 +375,7 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
             "has_catchall_allow": has_catchall_allow,
             "alias_options": _alias_options(doc, users, nodes),
             "owner_options": _owner_options(doc, users),
+            "ip_to_node": ip_to_node,
             "error": error,
             "flash": request.query_params.get("flash"),
             "save_error": request.query_params.get("save_error"),

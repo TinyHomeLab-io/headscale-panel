@@ -56,12 +56,18 @@
               </td>
               <td>
                 {% for s in r.src %}
-                  <span class="chip" style="font-size:0.78rem">{{ s }}</span>
+                  {% set name = ip_to_node.get(s) %}
+                  <span class="chip" style="font-size:0.78rem" {% if name %}title="{{ s }}"{% endif %}>
+                    {% if name %}{{ name }} <span class="muted" style="font-size:0.85em">({{ s }})</span>{% else %}{{ s }}{% endif %}
+                  </span>
                 {% endfor %}
               </td>
               <td>
                 {% for d in r.dsts %}
-                  <span class="chip" style="font-size:0.78rem">{{ d.alias }}</span>
+                  {% set name = ip_to_node.get(d.alias) %}
+                  <span class="chip" style="font-size:0.78rem" {% if name %}title="{{ d.alias }}"{% endif %}>
+                    {% if name %}{{ name }} <span class="muted" style="font-size:0.85em">({{ d.alias }})</span>{% else %}{{ d.alias }}{% endif %}
+                  </span>
                 {% endfor %}
               </td>
               <td class="mono" style="font-size:0.82rem;text-transform:uppercase">{{ r.proto if r.proto else 'any' }}</td>
