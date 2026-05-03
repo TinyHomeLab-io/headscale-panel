@@ -147,10 +147,36 @@
         </div>
         <div class="field" style="margin:0" id="ports-field">
           <label for="ports">Ports</label>
-          <input id="ports" type="text" name="ports" value="*" placeholder="* or 22 or 80,443" autocomplete="off">
+          <input id="ports" type="text" name="ports" value="*" placeholder="* or 22 (try: http, ssh, dns)" autocomplete="off" list="port_presets">
         </div>
         <button type="submit" class="btn">+ Add</button>
       </div>
+      <datalist id="port_presets">
+        <option value="22">SSH (TCP)</option>
+        <option value="53">DNS (TCP+UDP)</option>
+        <option value="80">HTTP (TCP)</option>
+        <option value="443">HTTPS (TCP)</option>
+        <option value="80,443">HTTP + HTTPS (TCP)</option>
+        <option value="3389">RDP (TCP)</option>
+        <option value="5900">VNC (TCP)</option>
+        <option value="3306">MySQL (TCP)</option>
+        <option value="5432">PostgreSQL (TCP)</option>
+        <option value="6379">Redis (TCP)</option>
+        <option value="27017">MongoDB (TCP)</option>
+        <option value="9090">Prometheus (TCP)</option>
+        <option value="3000">Grafana (TCP)</option>
+        <option value="8080">HTTP-alt 8080 (TCP)</option>
+        <option value="8443">HTTPS-alt 8443 (TCP)</option>
+        <option value="445">SMB (TCP)</option>
+        <option value="2049">NFS (TCP)</option>
+        <option value="1194">OpenVPN (UDP)</option>
+        <option value="51820">WireGuard (UDP)</option>
+        <option value="161">SNMP (UDP)</option>
+        <option value="123">NTP (UDP)</option>
+        <option value="25,587,465">SMTP 25/587/465 (TCP)</option>
+        <option value="143,993">IMAP 143/993 (TCP)</option>
+        <option value="110,995">POP3 110/995 (TCP)</option>
+      </datalist>
       <datalist id="alias_list">
         {% for o in alias_options %}
           <option value="{{ o.value }}">{{ o.label }}</option>
@@ -199,7 +225,7 @@
         </div>
         <div class="field" style="margin:0" id="edit-ports-field">
           <label for="edit-ports">Ports</label>
-          <input id="edit-ports" type="text" name="ports" placeholder="* or 22 or 80,443" autocomplete="off">
+          <input id="edit-ports" type="text" name="ports" placeholder="* or 22 (try: http, ssh, dns)" autocomplete="off" list="port_presets">
         </div>
       </div>
       <p class="muted" style="font-size:0.78rem;margin: 0.7rem 0 0">
@@ -231,6 +257,31 @@
         });
       });
     })();
+
+    // Map port-preset values -> protocol they typically use. Selecting one of
+    // these in either ports field auto-sets the matching Protocol dropdown.
+    // 53 (DNS) is intentionally absent — DNS uses TCP+UDP, leave proto as Any.
+    var PORT_PROTO = {
+      "22":"tcp","80":"tcp","443":"tcp","80,443":"tcp","3389":"tcp","5900":"tcp",
+      "3306":"tcp","5432":"tcp","6379":"tcp","27017":"tcp","9090":"tcp","3000":"tcp",
+      "8080":"tcp","8443":"tcp","445":"tcp","2049":"tcp",
+      "25,587,465":"tcp","143,993":"tcp","110,995":"tcp",
+      "1194":"udp","51820":"udp","161":"udp","123":"udp"
+    };
+    function wirePortPreset(portInputId, protoSelectId, onProtoChangeFn) {
+      var pi = document.getElementById(portInputId);
+      var ps = document.getElementById(protoSelectId);
+      if (!pi || !ps) return;
+      pi.addEventListener('input', function () {
+        var p = PORT_PROTO[pi.value.trim()];
+        if (p) {
+          ps.value = p;
+          if (typeof onProtoChangeFn === 'function') onProtoChangeFn();
+        }
+      });
+    }
+    wirePortPreset('ports', 'proto', typeof onProtoChange === 'function' ? onProtoChange : null);
+    wirePortPreset('edit-ports', 'edit-proto', typeof onEditProtoChange === 'function' ? onEditProtoChange : null);
 
     function onEditProtoChange() {
       var p = document.getElementById('edit-proto').value;
