@@ -107,7 +107,7 @@ def policy_test(request: Request, sess: dict = Depends(require_authenticated)):
         {
             "username": sess["username"],
             "error": error,
-            "alias_options": _alias_options(doc, users),
+            "alias_options": _alias_options(doc, users, nodes),
             "rules_count": len(doc.get("acls") or []),
             "test_src": test_src,
             "test_dst": test_dst,

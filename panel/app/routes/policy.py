@@ -249,7 +249,7 @@ def _evaluate_policy(
     return {"action": "deny", "rule_index": None}
 
 
-def _alias_options(doc: dict, users: list[dict]) -> list[dict]:
+def _alias_options(doc: dict, users: list[dict], nodes: list[dict] | None = None) -> list[dict]:
     """Build dropdown suggestions for source/destination aliases."""
     opts: list[dict] = [
         {"value": "*", "label": "* (any)"},
@@ -266,6 +266,10 @@ def _alias_options(doc: dict, users: list[dict]) -> list[dict]:
         opts.append({"value": t, "label": f"{t} (tag)"})
     for h in (doc.get("hosts") or {}).keys():
         opts.append({"value": h, "label": f"{h} (host)"})
+    for n in nodes or []:
+        nname = n.get("givenName") or n.get("name", "")
+        for ip in n.get("ipAddresses") or []:
+            opts.append({"value": ip, "label": f"{ip} ({nname})"})
     return opts
 
 
@@ -287,12 +291,14 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
     error = None
     doc: dict = dict(DEFAULT_POLICY)
     users: list[dict] = []
+    nodes: list[dict] = []
     if not hs:
         error = "Headscale client not configured"
     else:
         try:
             doc = load_policy(hs)
             users = hs.list_users()
+            nodes = hs.list_nodes()
         except (httpx.HTTPError, json.JSONDecodeError) as e:
             error = f"Could not load policy: {e}"
 
@@ -348,7 +354,7 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
             "tag_owners": tag_owners,
             "users": users,
             "has_catchall_allow": has_catchall_allow,
-            "alias_options": _alias_options(doc, users),
+            "alias_options": _alias_options(doc, users, nodes),
             "owner_options": _owner_options(doc, users),
             "error": error,
             "flash": request.query_params.get("flash"),
