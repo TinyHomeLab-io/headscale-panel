@@ -387,6 +387,19 @@ def view_policy(request: Request, sess: dict = Depends(require_authenticated)):
 VALID_PROTOS = {"tcp", "udp", "icmp", "icmpv6", "sctp", "igmp", "gre", "esp", "ah"}
 
 
+def _looks_like_ipv6(s: str) -> bool:
+    """True if `s` is a bare IPv6 address or network (so the colons are part of
+    the IPv6 syntax, not a port separator)."""
+    if "::" in s:
+        return True
+    bare = s.split("/", 1)[0] if "/" in s else s
+    try:
+        ip = ipaddress.ip_address(bare)
+        return ip.version == 6
+    except ValueError:
+        return False
+
+
 def _build_rule(action: str, src: str, dst: str, proto: str, ports: str) -> dict | str:
     """Build a rule dict from form inputs, or return an error string."""
     src_list = _split_list(src)
@@ -402,6 +415,13 @@ def _build_rule(action: str, src: str, dst: str, proto: str, ports: str) -> dict
 
     dst_list = []
     for d in dst_aliases:
+        # IPv6 aliases (e.g. fd7a:115c:a1e0::9) collide with the rfind-colon
+        # port heuristic — the last segment can look like a port number. Force
+        # port appending for anything IPv6-shaped; the user puts the port in
+        # the separate Ports field, never inline on an IPv6 address.
+        if _looks_like_ipv6(d):
+            dst_list.append(f"{d}:{port_spec}")
+            continue
         _existing_alias, existing_port = _split_dst(d)
         if existing_port != "*" or d.endswith(":*"):
             dst_list.append(d)
