@@ -25,6 +25,39 @@
     </div>
 
     <div class="card">
+      <h2>IP allocation</h2>
+      <p class="muted" style="font-size:0.85rem;margin-top:0">
+        Tailnet IP pools and how Headscale picks the next free address. <strong style="color:var(--warning)">Changing the prefixes will break any existing node whose IP falls outside the new range</strong> — leave them at the defaults unless you really need to relocate the pool.
+      </p>
+
+      {% if prefix_env_overrides %}
+        <div class="flash flash-error" style="margin: 0.5rem 0 1rem">
+          <code>{{ prefix_env_overrides | join(', ') }}</code> is set in <code>.env</code>. Headscale's Viper config gives env vars precedence over <code>config.yaml</code>, so changes saved here will be overridden at startup. Remove these env vars to make the panel the source of truth.
+        </div>
+      {% endif %}
+
+      <div class="form-row">
+        <div class="field">
+          <label for="prefix_v4">IPv4 prefix</label>
+          <input id="prefix_v4" type="text" name="prefix_v4" value="{{ prefix_v4 }}" placeholder="100.64.0.0/10">
+          <p class="muted" style="font-size:0.78rem;margin: 0.3rem 0 0">Tailscale's CGNAT range is <code>100.64.0.0/10</code>.</p>
+        </div>
+        <div class="field">
+          <label for="prefix_v6">IPv6 prefix</label>
+          <input id="prefix_v6" type="text" name="prefix_v6" value="{{ prefix_v6 }}" placeholder="fd7a:115c:a1e0::/48">
+          <p class="muted" style="font-size:0.78rem;margin: 0.3rem 0 0">Tailscale's ULA is <code>fd7a:115c:a1e0::/48</code>.</p>
+        </div>
+        <div class="field">
+          <label for="prefix_allocation">Allocation</label>
+          <select id="prefix_allocation" name="prefix_allocation" style="font-family:inherit;font-size:0.95rem;padding:0.55rem 0.75rem;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%">
+            <option value="sequential" {% if prefix_allocation == 'sequential' %}selected{% endif %}>Sequential — fill from the bottom up</option>
+            <option value="random"     {% if prefix_allocation == 'random' %}selected{% endif %}>Random — pick a random free address</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>TLS</h2>
       <div class="field">
         <label for="tls_mode">Mode</label>
